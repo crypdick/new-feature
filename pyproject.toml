@@ -8,14 +8,42 @@ version = "0.1.0"
 description = "Create isolated feature worktrees with allocated runtime environments."
 readme = "README.md"
 requires-python = ">=3.13"
+authors = [
+    { name = "Ricardo Decal", email = "public@ricardodecal.com" },
+]
+keywords = ["codex", "git", "worktree", "automation", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+]
 dependencies = [
     "beartype>=0.22.9",
     "filelock>=3.29.7",
     "tomli-w>=1.2.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/crypdick/new-feature"
+Issues = "https://github.com/crypdick/new-feature/issues"
+Source = "https://github.com/crypdick/new-feature"
+
 [project.scripts]
 new-feature = "new_feature.app:main"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/pyproject.toml",
+    "/README.md",
+    "/src/new_feature",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/new_feature"]
 
 [dependency-groups]
 dev = [

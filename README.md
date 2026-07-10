@@ -60,3 +60,7 @@ The generated manifest is a single ignored TOML file in the main checkout:
 ```
 
 The manifest stores all active feature env allocations, so ports, names, paths, and namespaces can be reserved without scanning generated worktrees.
+
+## Publishing
+
+See [docs/PUBLISHING.md](docs/PUBLISHING.md) for PyPI release setup and verification.
