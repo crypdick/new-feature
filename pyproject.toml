@@ -1,7 +1,204 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "new-feature"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "beartype>=0.22.9",
+]
+
+[project.scripts]
+new-feature = "new_feature.app:main"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.15.0",
+    "detect-secrets>=1.5.0",
+    "flynt>=1.0.6",
+    "mypy>=2.2.0",
+    "pre-commit>=4.6.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
+    "pyupgrade>=3.21.2",
+    "ruff>=0.15.21",
+    "vulture>=2.16",
+]
+
+[tool.ruff]
+line-length = 110
+preview = true
+
+[tool.ruff.lint]
+select = [
+    "A",
+    "ANN001",
+    "ANN002",
+    "ANN003",
+    "ANN201",
+    "ANN202",
+    "ANN204",
+    "ANN205",
+    "ANN206",
+    "ANN401",
+    "ARG",
+    "ASYNC",
+    "B",
+    "BLE",
+    "C4",
+    "COM818",
+    "C90",
+    "D402",
+    "D414",
+    "D418",
+    "D419",
+    "DOC102",
+    "DOC202",
+    "DOC403",
+    "DTZ",
+    "E",
+    "ERA",
+    "EXE",
+    "F",
+    "FA",
+    "FBT",
+    "FURB101",
+    "FURB103",
+    "FURB122",
+    "FURB129",
+    "FURB132",
+    "FURB157",
+    "FURB161",
+    "FURB162",
+    "FURB168",
+    "FURB169",
+    "FURB171",
+    "FURB177",
+    "FURB181",
+    "FURB188",
+    "G",
+    "I",
+    "INP",
+    "ISC004",
+    "LOG",
+    "N",
+    "PERF",
+    "PGH",
+    "PIE",
+    "PLC",
+    "PLE",
+    "PLR0124",
+    "PLR0133",
+    "PLR0206",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR1702",
+    "PLR1704",
+    "PLR1711",
+    "PLR1714",
+    "PLR1716",
+    "PLR1722",
+    "PLR1733",
+    "PLR1736",
+    "PLR5501",
+    "PLW",
+    "PT",
+    "PTH",
+    "RET",
+    "RSE",
+    "RUF",
+    "S",
+    "SIM",
+    "SLF",
+    "SLOT",
+    "T10",
+    "T20",
+    "TC",
+    "TID",
+    "TRY004",
+    "TRY201",
+    "TRY203",
+    "TRY300",
+    "TRY400",
+    "TRY401",
+    "UP",
+    "W",
+    "YTT",
+]
+ignore = [
+    "E501",
+    "TRY003",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"src/new_feature/__init__.py" = ["RUF067"]
+"tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "PLR0912", "PLR0913", "PLR0915", "S101", "SLF"]
+"scripts/**/*.py" = ["C901", "PLR0912", "PLR0915", "S603", "S607", "T20"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+disable_error_code = ["no-untyped-call", "no-untyped-def"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--no-header -n auto -q --durations=5 --durations-min=1.0 --cov=new_feature --cov-report=term-missing --cov-report=html --cov-fail-under=100 --failed-first"
+timeout = 20
+timeout_method = "thread"
+
+[tool.coverage.run]
+branch = true
+source = ["new_feature"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/conftest.py",
+]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+[tool.vulture]
+min_confidence = 80
+exclude = [".venv/"]
+paths = ["src", "tests"]

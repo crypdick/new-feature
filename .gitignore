@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Tool-generated local artifacts
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/

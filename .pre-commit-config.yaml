@@ -1,0 +1,100 @@
+# Run with: uv run pre-commit run --all-files
+# Install hooks: uv run pre-commit install
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
+      - id: check-added-large-files
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: uv\.lock
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff-check
+        args: [--fix, --quiet]
+      - id: ruff-format
+        args: [--quiet]
+
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.14
+    hooks:
+      - id: vulture
+        args: [src, tests, --min-confidence, "80"]
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.2
+    hooks:
+      - id: pyupgrade
+        args: [--py313-plus]
+
+  - repo: https://github.com/ikamensh/flynt/
+    rev: 1.0.6
+    hooks:
+      - id: flynt
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src tests main.py scripts/pre_commit_hooks
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: check-exception-handling
+        name: Check Exception Handling
+        entry: python scripts/pre_commit_hooks/check_exception_handling.py
+        language: system
+        types: [python]
+
+      - id: check-print-statements
+        name: Check Print Statements
+        entry: python scripts/pre_commit_hooks/check_print_statements.py
+        language: system
+        types: [python]
+
+      - id: check-timeless-comments
+        name: Check Timeless Comments
+        entry: python scripts/pre_commit_hooks/check_timeless_comments.py
+        language: system
+        types: [python]
+
+      - id: check-file-length
+        name: Check File Length
+        entry: python scripts/pre_commit_hooks/check_file_length.py
+        language: system
+        types: [python]
+
+      - id: check-private-test-imports
+        name: Forbid private imports in tests
+        entry: python scripts/pre_commit_hooks/check_private_test_imports.py
+        language: system
+        types: [python]
+
+      - id: fix-future-annotations
+        name: Fix Future Annotations
+        entry: python scripts/pre_commit_hooks/fix_future_annotations.py
+        language: system
+        types: [python]
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        always_run: true
