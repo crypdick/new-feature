@@ -132,6 +132,8 @@ def _merge_feature(root: Path, name: str) -> int:
     run_commands(config.pre_merge, cwd=worktree, env=record.env)
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
+    if not worktree_is_clean(root):
+        raise NewFeatureError("target checkout has uncommitted changes; commit or stash them before merging")
     begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
     try:
         run_commands(config.post_merge, cwd=root, env=record.env)

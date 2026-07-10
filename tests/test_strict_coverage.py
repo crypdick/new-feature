@@ -299,6 +299,8 @@ def test_merge_rejects_dirty_worktree_and_aborts_failed_post_merge(
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "dirty.txt").write_text("dirty\n", encoding="utf-8")
     assert main(["merge-feature", "my-feature"]) == 1
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "dirty.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "dirty"], cwd=worktree, check=True)
 
@@ -314,6 +316,8 @@ def test_teardown_after_merge_uses_non_force_branch_delete(
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-launch"]) == 0
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
@@ -333,6 +337,8 @@ def test_merge_reports_missing_record_after_merge(tmp_path: Path, monkeypatch: p
     )
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-launch"]) == 0
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
