@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import logging
+import pytest
 
-from new_feature.app import main, startup_message
-
-
-def test_main_logs_startup_message(caplog) -> None:
-    with caplog.at_level(logging.INFO):
-        main()
-
-    assert "new feature started" in caplog.messages
+from new_feature.app import main
 
 
-def test_startup_message() -> None:
-    assert startup_message() == "new feature started"
+def test_main_delegates_to_cli_help() -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--help"])
+
+    assert exc_info.value.code == 0

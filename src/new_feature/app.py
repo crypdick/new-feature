@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import logging
+import sys
 
-logger = logging.getLogger(__name__)
-
-
-def startup_message() -> str:
-    return "new feature started"
+from new_feature.cli import main as cli_main
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    logger.info(startup_message())
+def main(argv: list[str] | None = None) -> int:
+    return cli_main(sys.argv[1:] if argv is None else argv)

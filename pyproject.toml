@@ -5,11 +5,13 @@ build-backend = "hatchling.build"
 [project]
 name = "new-feature"
 version = "0.1.0"
-description = "Add your description here"
+description = "Create isolated feature worktrees with allocated runtime environments."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "beartype>=0.22.9",
+    "filelock>=3.29.7",
+    "tomli-w>=1.2.0",
 ]
 
 [project.scripts]
@@ -144,8 +146,16 @@ max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "src/new_feature/__init__.py" = ["RUF067"]
-"tests/**/*.py" = ["ANN", "ARG", "C901", "FBT", "F841", "PLR0912", "PLR0913", "PLR0915", "S101", "SLF"]
+"tests/**/*.py" = ["ALL"]
 "scripts/**/*.py" = ["C901", "PLR0912", "PLR0915", "S603", "S607", "T20"]
+"src/new_feature/agent.py" = ["S404", "S603", "TC003"]
+"src/new_feature/allocator.py" = ["PLR0913", "TC001"]
+"src/new_feature/cli.py" = ["T201"]
+"src/new_feature/commands.py" = ["S404", "S602", "S603", "T201", "TC003"]
+"src/new_feature/config.py" = ["TC003"]
+"src/new_feature/git.py" = ["S404", "S603", "S607"]
+"src/new_feature/gitignore.py" = ["TC003"]
+"src/new_feature/manifest.py" = ["TC003"]
 
 [tool.ruff.format]
 quote-style = "double"
