@@ -194,6 +194,22 @@ def test_config_validation_errors(tmp_path: Path) -> None:
     with pytest.raises(NewFeatureError, match="setup must be a list"):
         load_project_config(tmp_path)
 
+    (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\nagent = "codex"\n', encoding="utf-8")
+    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+        load_project_config(tmp_path)
+
+    (tmp_path / "pyproject.toml").write_text("[tool.new-feature]\nagent = []\n", encoding="utf-8")
+    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+        load_project_config(tmp_path)
+
+    (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\nagent = ["codex", ""]\n', encoding="utf-8")
+    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+        load_project_config(tmp_path)
+
+    (tmp_path / "pyproject.toml").write_text("[tool.new-feature]\nagent = [1]\n", encoding="utf-8")
+    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+        load_project_config(tmp_path)
+
     (tmp_path / "pyproject.toml").write_text('[tool.new-feature.env]\nBAD = "value"\n', encoding="utf-8")
     with pytest.raises(NewFeatureError, match="env spec BAD"):
         load_project_config(tmp_path)
@@ -271,7 +287,7 @@ def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.Mo
 
     agent = tmp_path / "agent.py"
     agent.write_text(
-        'from pathlib import Path\nimport os, sys\nPath("agent-ran.txt").write_text(os.environ["NEW_FEATURE_SLUG"] + "|" + sys.argv[1])\n',
+        'from pathlib import Path\nimport os, sys\nPath("agent-ran.txt").write_text(os.environ["NEW_FEATURE_SLUG"] + "|" + "|".join(sys.argv[1:]))\n',
         encoding="utf-8",
     )
     wrapper = tmp_path / "agent"
@@ -279,13 +295,13 @@ def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.Mo
     wrapper.chmod(0o755)
     init_git_repo(
         tmp_path,
-        f'[project]\nname = "demo"\n\n[tool.new-feature]\nagent = "{wrapper}"\n',
+        f'[project]\nname = "demo"\n\n[tool.new-feature]\nagent = ["{wrapper}", "--prompt"]\n',
     )
     monkeypatch.chdir(tmp_path)
 
     assert main(["my-feature"]) == 0
     output = tmp_path / ".worktrees" / "my-feature" / "agent-ran.txt"
-    assert output.read_text(encoding="utf-8").startswith("my-feature|Interview Ricardo")
+    assert output.read_text(encoding="utf-8").startswith("my-feature|--prompt|Interview the user")
 
 
 def test_merge_rejects_dirty_worktree_and_aborts_failed_post_merge(

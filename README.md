@@ -33,7 +33,7 @@ Add config to the target repo's `pyproject.toml`:
 [tool.new-feature]
 target_branch = "main"
 branch_prefix = "feature/"
-agent = "codex"
+agent = ["codex"]
 push = false
 setup = ["uv sync"]
 pre_merge = ["uv run pytest"]
@@ -45,6 +45,15 @@ WEB_PORT = { allocate = "port", min = 3000, max = 3999 }
 API_PORT = { allocate = "port", min = 4000, max = 4999 }
 DATABASE_NAME = { allocate = "name", prefix = "myapp", max_length = 63 }
 CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
+```
+
+`agent` is the command and arguments used to launch the coding agent. `new-feature` appends its
+generated feature prompt as the final argument, so agents that require a prompt flag can be configured
+directly:
+
+```toml
+[tool.new-feature]
+agent = ["copilot", "--prompt"]
 ```
 
 `setup` runs after worktree creation; `teardown` runs before worktree removal.

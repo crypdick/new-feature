@@ -56,7 +56,7 @@ def test_load_project_config_defaults(tmp_path: Path):
     config = load_project_config(tmp_path)
     assert config.target_branch == "main"
     assert config.branch_prefix == "feature/"
-    assert config.agent == "codex"
+    assert config.agent == ("codex",)
     assert config.push is False
     assert config.setup == []
     assert config.pre_merge == []
@@ -233,7 +233,7 @@ def test_remove_worktree_and_branch_deletes_both(tmp_path: Path):
 
 def test_initial_prompt_is_prd_interview_with_fast_path():
     prompt = build_initial_prompt("add-billing-webhooks")
-    assert "Interview Ricardo" in prompt
+    assert "Interview the user" in prompt
     assert "PRD" in prompt
     assert "add-billing-webhooks" in prompt
     assert "get right to work" in prompt

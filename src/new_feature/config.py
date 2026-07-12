@@ -7,6 +7,8 @@ from typing import Any
 
 from new_feature.errors import NewFeatureError
 
+type AgentCommand = tuple[str, ...]
+
 
 @dataclass(frozen=True)
 class EnvSpec:
@@ -23,7 +25,7 @@ class EnvSpec:
 class ProjectConfig:
     target_branch: str = "main"
     branch_prefix: str = "feature/"
-    agent: str = "codex"
+    agent: AgentCommand = ("codex",)
     push: bool = False
     setup: list[str] = field(default_factory=list)
     pre_merge: list[str] = field(default_factory=list)
@@ -37,6 +39,16 @@ def _string_list(raw: dict[str, Any], name: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise NewFeatureError(f"tool.new-feature.{name} must be a list of strings")
     return list(value)
+
+
+def _agent_command(raw: dict[str, Any]) -> AgentCommand:
+    # NOTE: README.md documents this value as an argv prefix.
+    value = raw.get("agent", ["codex"])
+    if not isinstance(value, list) or not value:
+        raise NewFeatureError("tool.new-feature.agent must be a non-empty list of non-empty strings")
+    if not all(isinstance(item, str) for item in value) or not all(value):
+        raise NewFeatureError("tool.new-feature.agent must be a non-empty list of non-empty strings")
+    return tuple(value)
 
 
 def load_project_config(repo_root: Path) -> ProjectConfig:
@@ -69,7 +81,7 @@ def load_project_config(repo_root: Path) -> ProjectConfig:
     return ProjectConfig(
         target_branch=str(raw.get("target_branch", "main")),
         branch_prefix=str(raw.get("branch_prefix", "feature/")),
-        agent=str(raw.get("agent", "codex")),
+        agent=_agent_command(raw),
         push=bool(raw.get("push", False)),
         setup=_string_list(raw, "setup"),
         pre_merge=_string_list(raw, "pre_merge"),
