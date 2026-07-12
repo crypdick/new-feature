@@ -1,13 +1,17 @@
 # new-feature
 
-`new-feature` creates isolated git worktree environments for feature work, allocates conflict-free runtime values, and launches an interactive Codex session in the new worktree.
+`new-feature` aims to eliminate friction for creating new features. In a single comamnd, it creates isolated git worktree environments, allocates conflict-free runtime values, and launches an interactive Codex session in the new worktree.
 
 ## Usage
 
 ```bash
+# Create a new worktree and set it up with isolated db, .env, or anything else you want.
 uvx new-feature my-feature
+# Merges the worktree into the main branch
 uvx new-feature merge-feature my-feature
+# Runs your teardown commands to delete dev databases and the git worktree.
 uvx new-feature teardown my-feature
+# Teardown a worktree even if it has uncommitted work.
 uvx new-feature teardown my-feature --force
 ```
 
@@ -49,18 +53,3 @@ Supported env entries:
 `new-feature merge-feature my-feature` runs pre-merge checks in the feature worktree, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`.
 
 `new-feature teardown my-feature` runs teardown commands, removes the worktree, deletes the branch, and removes the manifest entry. If the feature has not gone through `merge-feature`, pass `--force` to abandon it deliberately.
-
-## Generated State
-
-The generated manifest is a single ignored TOML file in the main checkout:
-
-```text
-.new-feature/manifest.toml
-.new-feature/manifest.lock
-```
-
-The manifest stores all active feature env allocations, so ports, names, paths, and namespaces can be reserved without scanning generated worktrees.
-
-## Publishing
-
-See [docs/PUBLISHING.md](docs/PUBLISHING.md) for PyPI release setup and verification.
