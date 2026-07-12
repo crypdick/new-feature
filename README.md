@@ -1,6 +1,6 @@
 # new-feature
 
-`new-feature` creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and launches an interactive Codex session in the new worktree.
+`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and launches an interactive Codex session in the new worktree.
 
 ## Install
 
