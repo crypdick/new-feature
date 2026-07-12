@@ -278,8 +278,8 @@ def test_create_dry_run_and_duplicate_detection(
 
     assert main(["my-feature", "--dry-run"]) == 0
     assert "NEW_FEATURE_BRANCH=feature/my-feature" in capsys.readouterr().out
-    assert main(["my-feature", "--no-launch"]) == 0
-    assert main(["my-feature", "--no-launch"]) == 1
+    assert main(["my-feature", "--no-agent"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 1
 
 
 def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,7 +311,7 @@ def test_merge_rejects_dirty_worktree_and_aborts_failed_post_merge(
 
     init_git_repo(tmp_path, '[project]\nname = "demo"\n\n[tool.new-feature]\npost_merge = ["false"]\n')
     monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "dirty.txt").write_text("dirty\n", encoding="utf-8")
     assert main(["merge-feature", "my-feature"]) == 1
@@ -331,7 +331,7 @@ def test_teardown_after_merge_uses_non_force_branch_delete(
 
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
     subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"
@@ -352,7 +352,7 @@ def test_merge_reports_missing_record_after_merge(tmp_path: Path, monkeypatch: p
         '[project]\nname = "demo"\n\n[tool.new-feature]\npost_merge = ["rm .new-feature/manifest.toml"]\n',
     )
     monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
     subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"

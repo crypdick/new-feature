@@ -17,6 +17,8 @@ Or copy and paste this into your favorite coding agent:
 ```bash
 # Create a feature worktree and launch the configured agent.
 uvx new-feature my-feature
+# Create a feature worktree without launching another agent.
+uvx new-feature my-feature --no-agent
 # Merges the worktree into the main branch
 uvx new-feature merge-feature my-feature
 # Run configured teardown and remove the feature worktree.
@@ -73,4 +75,4 @@ Supported env entries:
 
 `new-feature merge-feature my-feature` runs pre-merge checks in the feature worktree, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`.
 
-`new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the feature has not gone through `merge-feature`, pass `--force` to abandon it deliberately.
+`new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the worktree has uncommitted changes or the branch has commits that are not in the target branch, pass `--force` to abandon them deliberately.

@@ -15,6 +15,7 @@ from new_feature.git import (
     begin_merge_without_commit,
     commit_merge,
     create_worktree,
+    is_branch_merged,
     push_target,
     remove_worktree_and_branch,
     repo_root,
@@ -34,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     create = subparsers.add_parser("create", help="create a feature worktree")
     create.add_argument("name")
-    create.add_argument("--no-launch", action="store_true")
+    create.add_argument("--no-agent", action="store_true")
     create.add_argument("--dry-run", action="store_true")
     create.set_defaults(command="create")
 
@@ -64,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = repo_root(Path.cwd())
         if args.command == "create":
-            return _create(root, args.name, no_launch=args.no_launch, dry_run=args.dry_run)
+            return _create(root, args.name, no_agent=args.no_agent, dry_run=args.dry_run)
         if args.command == "merge-feature":
             return _merge_feature(root, args.name)
         if args.command == "teardown":
@@ -75,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
-def _create(root: Path, name: str, *, no_launch: bool, dry_run: bool) -> int:
+def _create(root: Path, name: str, *, no_agent: bool, dry_run: bool) -> int:
     config = load_project_config(root)
     slug = slugify(name)
     key = feature_key(slug)
@@ -114,7 +115,7 @@ def _create(root: Path, name: str, *, no_launch: bool, dry_run: bool) -> int:
         save_manifest(root, manifest)
 
     run_commands(config.setup, cwd=worktree, env=env)
-    if no_launch:
+    if no_agent:
         return 0
     prompt = build_initial_prompt(slug)
     return launch_interactive_agent(config.agent, worktree, env, prompt)
@@ -162,12 +163,14 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
         record = manifest.features.get(key)
         if record is None:
             raise NewFeatureError(f"unknown feature: {name}")
-        merged = record.status == "merged"
-        if not merged and not force:
-            raise NewFeatureError("feature is not merged; pass --force to abandon it")
     worktree = root / record.worktree
+    if not force:
+        if not worktree_is_clean(worktree):
+            raise NewFeatureError("feature worktree has uncommitted changes; pass --force to abandon them")
+        if not is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
+            raise NewFeatureError("feature branch has unmerged commits; pass --force to abandon them")
     run_commands(config.teardown, cwd=worktree, env=record.env)
-    remove_worktree_and_branch(root, branch=record.branch, worktree=worktree, force=force or not merged)
+    remove_worktree_and_branch(root, branch=record.branch, worktree=worktree, force=force)
     with manifest_lock(root):
         manifest = load_manifest(root)
         del manifest.features[key]

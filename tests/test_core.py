@@ -19,10 +19,10 @@ from new_feature.slug import feature_key, slugify
 
 
 def test_bare_feature_name_is_create_command():
-    args = parse_args(["my-feature", "--no-launch"])
+    args = parse_args(["my-feature", "--no-agent"])
     assert args.command == "create"
     assert args.name == "my-feature"
-    assert args.no_launch is True
+    assert args.no_agent is True
 
 
 def test_parser_accepts_merge_feature_command():
@@ -256,7 +256,7 @@ WEB_PORT = { allocate = "port", min = 3200, max = 3201 }
 """,
     )
     monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
     assert (tmp_path / ".worktrees" / "my-feature").exists()
     assert (tmp_path / ".new-feature" / "manifest.toml").exists()
     assert ".new-feature/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
@@ -280,7 +280,7 @@ push = false
 """,
     )
     monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
     subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"
@@ -301,20 +301,48 @@ def test_merge_feature_requires_clean_target_checkout(
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
 
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
 
     assert main(["merge-feature", "my-feature"]) == 1
     assert "target checkout has uncommitted changes" in capsys.readouterr().err
 
 
-def test_teardown_requires_force_for_unmerged_feature(tmp_path: Path, monkeypatch):
+def test_teardown_allows_clean_feature_without_unique_commits(tmp_path: Path, monkeypatch):
     from tests.conftest import init_git_repo
 
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
+    assert main(["teardown", "my-feature"]) == 0
+    assert not (tmp_path / ".worktrees" / "my-feature").exists()
+
+
+def test_teardown_requires_force_for_unmerged_commits(tmp_path: Path, monkeypatch):
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    (worktree / "feature.txt").write_text("work\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "feature work"], cwd=worktree, check=True)
+
     assert main(["teardown", "my-feature"]) == 1
-    assert (tmp_path / ".worktrees" / "my-feature").exists()
+    assert worktree.exists()
+
+
+def test_teardown_requires_force_for_uncommitted_changes(tmp_path: Path, monkeypatch):
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    (worktree / "feature.txt").write_text("work\n", encoding="utf-8")
+
+    assert main(["teardown", "my-feature"]) == 1
+    assert worktree.exists()
 
 
 def test_teardown_force_removes_worktree_branch_and_manifest_entry(tmp_path: Path, monkeypatch):
@@ -331,7 +359,7 @@ teardown = ["printf torn-down > teardown.txt"]
 """,
     )
     monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-launch"]) == 0
+    assert main(["my-feature", "--no-agent"]) == 0
     assert main(["teardown", "my-feature", "--force"]) == 0
     assert not (tmp_path / ".worktrees" / "my-feature").exists()
     manifest = load_manifest(tmp_path)
