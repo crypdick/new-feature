@@ -1,6 +1,6 @@
 # new-feature
 
-`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktree environments, allocates conflict-free runtime values, and launches an interactive Codex session in the new worktree.
+`new-feature` creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and launches an interactive Codex session in the new worktree.
 
 ## Install
 
@@ -8,14 +8,18 @@
 uv tool install new-feature
 ```
 
+Or copy and paste this into your favorite coding agent:
+
+> Run `curl -fsSL https://pypi.org/pypi/new-feature/json`, read `info.description`, and set up `new-feature` on this machine.
+
 ## Usage
 
 ```bash
-# Create a new worktree and set it up with isolated db, .env, or anything else you want.
+# Create a feature worktree and launch the configured agent.
 uvx new-feature my-feature
 # Merges the worktree into the main branch
 uvx new-feature merge-feature my-feature
-# Runs your teardown commands to delete dev databases and the git worktree.
+# Run configured teardown and remove the feature worktree.
 uvx new-feature teardown my-feature
 # Teardown a worktree even if it has uncommitted work.
 uvx new-feature teardown my-feature --force
@@ -43,6 +47,8 @@ DATABASE_NAME = { allocate = "name", prefix = "myapp", max_length = 63 }
 CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
 ```
 
+`setup` runs after worktree creation; `teardown` runs before worktree removal.
+
 Supported env entries:
 
 - `{ value = "literal" }`
@@ -58,4 +64,4 @@ Supported env entries:
 
 `new-feature merge-feature my-feature` runs pre-merge checks in the feature worktree, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`.
 
-`new-feature teardown my-feature` runs teardown commands, removes the worktree, deletes the branch, and removes the manifest entry. If the feature has not gone through `merge-feature`, pass `--force` to abandon it deliberately.
+`new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the feature has not gone through `merge-feature`, pass `--force` to abandon it deliberately.
