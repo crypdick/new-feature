@@ -1,6 +1,12 @@
 # new-feature
 
-`new-feature` aims to eliminate friction for creating new features. In a single comamnd, it creates isolated git worktree environments, allocates conflict-free runtime values, and launches an interactive Codex session in the new worktree.
+`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktree environments, allocates conflict-free runtime values, and launches an interactive Codex session in the new worktree.
+
+## Install
+
+```bash
+uv tool install new-feature
+```
 
 ## Usage
 
