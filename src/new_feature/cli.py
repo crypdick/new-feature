@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
 from typing import cast
@@ -47,7 +46,9 @@ from new_feature.help_text import (
     TEARDOWN_DESCRIPTION,
     TOP_LEVEL_EPILOG,
 )
+from new_feature.lifecycle import now
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
+from new_feature.recovery import repair_feature
 from new_feature.slug import feature_key, slugify
 
 _COMMANDS = frozenset({"create", "setup", "merge", "teardown", "list", "doctor", "install-codex-hook"})
@@ -314,7 +315,7 @@ def _create(
             worktree=str(worktree.relative_to(root)),
             target_branch=config.target_branch,
             status="active",
-            created_at=_now(),
+            created_at=now(),
             config_fingerprint=config_fingerprint(config),
             env=env,
         )
@@ -368,7 +369,7 @@ def _merge(root: Path, name: str) -> int:
         if record is None:
             raise NewFeatureError(f"unknown feature after merge: {name}")
         record.status = "merged"
-        record.merged_at = _now()
+        record.merged_at = now()
         save_manifest(root, manifest)
     return 0
 
@@ -383,6 +384,10 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
             raise NewFeatureError(f"unknown feature: {name}")
     _warn_if_config_changed(config, record)
     worktree = root / record.worktree
+    if not worktree.is_dir():
+        raise NewFeatureError(
+            "feature worktree is missing; run `new-feature doctor --repair` to recover a merged branch"
+        )
     if not force:
         if not worktree_is_clean(worktree):
             raise NewFeatureError("feature worktree has uncommitted changes; pass --force to abandon them")
@@ -422,10 +427,11 @@ def _doctor(root: Path, *, repair: bool) -> int:
             manifest = load_manifest(root)
             for key, record in list(manifest.features.items()):
                 state = inspect_feature(root, record, fingerprint)
-                if state.stale:
+                message = repair_feature(root, record, state)
+                if message:
                     del manifest.features[key]
                     repaired.add(key)
-                    print(f"repaired: removed stale manifest entry {record.slug}")
+                    print(f"repaired: {message}")
             if repaired:
                 save_manifest(root, manifest)
 
@@ -443,7 +449,3 @@ def _warn_if_config_changed(config: ProjectConfig, record: FeatureRecord) -> Non
             f"new-feature: warning: project configuration changed since {record.slug} was created",
             file=sys.stderr,
         )
-
-
-def _now() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
