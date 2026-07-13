@@ -21,7 +21,8 @@ Configuration (new-feature.toml, or [tool.new-feature] in pyproject.toml):
 
 All settings are optional. The defaults are target_branch = "main", default_agent = "codex",
 agents = { codex = ["codex"], claude = ["claude"] }, push = false, and empty command and
-environment lists.
+environment lists. Built-in create and setup prompts can be overridden with create_prompt and
+setup_prompt in TOML, or for one invocation with --prompt TEXT.
 
 If both new-feature.toml and pyproject.toml exist, new-feature.toml takes precedence.
 For pyproject.toml, place these settings under [tool.new-feature] and use

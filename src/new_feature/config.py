@@ -11,12 +11,15 @@ from typing import assert_never, cast
 from new_feature.errors import NewFeatureError
 
 type AgentCommand = tuple[str, ...]
+type Prompt = str
 type RawTable = dict[str, object]
 
 _CONFIG_KEYS = {
     "target_branch",
     "default_agent",
     "agents",
+    "create_prompt",
+    "setup_prompt",
     "push",
     "setup",
     "pre_merge",
@@ -82,6 +85,8 @@ class ProjectConfig:
     target_branch: str = "main"
     default_agent: str = "codex"
     agents: dict[str, AgentCommand] = field(default_factory=_default_agents)
+    create_prompt: Prompt | None = None
+    setup_prompt: Prompt | None = None
     push: bool = False
     setup: list[str] = field(default_factory=list)
     pre_merge: list[str] = field(default_factory=list)
@@ -132,6 +137,15 @@ def _boolean(raw: RawTable, name: str, *, default: bool, config_path: str) -> bo
     value = raw.get(name, default)
     if not isinstance(value, bool):
         raise NewFeatureError(f"{config_path}.{name} must be a boolean")
+    return value
+
+
+def _optional_prompt(raw: RawTable, name: str, *, config_path: str) -> Prompt | None:
+    value = raw.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise NewFeatureError(f"{config_path}.{name} must be a non-empty string")
     return value
 
 
@@ -238,6 +252,8 @@ def config_fingerprint(config: ProjectConfig) -> str:
         "target_branch": config.target_branch,
         "default_agent": config.default_agent,
         "agents": config.agents,
+        "create_prompt": config.create_prompt,
+        "setup_prompt": config.setup_prompt,
         "push": config.push,
         "setup": config.setup,
         "pre_merge": config.pre_merge,
@@ -318,6 +334,8 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
         target_branch=_string(raw, "target_branch", "main", config_path=config_path),
         default_agent=_string(raw, "default_agent", "codex", config_path=config_path),
         agents=_agents(raw, config_path=config_path),
+        create_prompt=_optional_prompt(raw, "create_prompt", config_path=config_path),
+        setup_prompt=_optional_prompt(raw, "setup_prompt", config_path=config_path),
         push=_boolean(raw, "push", default=False, config_path=config_path),
         setup=_string_list(raw, "setup", config_path=config_path),
         pre_merge=_string_list(raw, "pre_merge", config_path=config_path),

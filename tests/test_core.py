@@ -65,6 +65,8 @@ def test_top_level_help_explains_agent_workflow():
     assert "new-feature COMMAND --help" in help_text
     assert "new-feature.toml" in help_text
     assert "[tool.new-feature]" in help_text
+    assert "create_prompt" in help_text
+    assert "setup_prompt" in help_text
     assert 'WEB_PORT = { allocate = "port"' in help_text
     assert "Configured commands are shell strings run sequentially" in help_text
     assert "NEW_FEATURE_WORKTREE" in help_text
@@ -126,6 +128,8 @@ def test_load_project_config_defaults(tmp_path: Path):
     assert config.target_branch == "main"
     assert config.default_agent == "codex"
     assert config.agents == {"codex": ("codex",), "claude": ("claude",)}
+    assert config.create_prompt is None
+    assert config.setup_prompt is None
     assert config.push is False
     assert config.setup == []
     assert config.pre_merge == []
@@ -138,6 +142,8 @@ def test_load_project_config_from_new_feature_toml(tmp_path: Path):
     (tmp_path / "new-feature.toml").write_text(
         """
 target_branch = "develop"
+create_prompt = "Start with the data model."
+setup_prompt = "Configure only the test suite."
 setup = ["uv sync"]
 pre_merge = ["uv run pytest"]
 post_merge = ["uv run pytest"]
@@ -151,6 +157,8 @@ STATIC_ENV = { value = "development" }
     )
     config = load_project_config(tmp_path)
     assert config.target_branch == "develop"
+    assert config.create_prompt == "Start with the data model."
+    assert config.setup_prompt == "Configure only the test suite."
     assert config.setup == ["uv sync"]
     assert isinstance(config.env["WEB_PORT"], PortEnvSpec)
     assert config.env["WEB_PORT"].minimum == 3000

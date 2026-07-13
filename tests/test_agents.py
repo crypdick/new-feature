@@ -4,18 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from new_feature.agent import resolve_agent
+from new_feature.agent import resolve_agent, resolve_prompt
 from new_feature.cli import parse_args
 from new_feature.config import ProjectConfig, load_project_config
 from new_feature.errors import NewFeatureError
 
 
-def test_parser_accepts_agent_overrides() -> None:
-    create = parse_args(["my-feature", "--agent", "claude"])
-    setup = parse_args(["setup", "--agent", "fooagent --baz-flag"])
+def test_parser_accepts_agent_and_prompt_overrides() -> None:
+    create = parse_args(["my-feature", "--agent", "claude", "--prompt", "create this feature"])
+    setup = parse_args(["setup", "--agent", "fooagent --baz-flag", "--prompt", "set this up"])
 
     assert create.agent == "claude"
+    assert create.prompt == "create this feature"
     assert setup.agent == "fooagent --baz-flag"
+    assert setup.prompt == "set this up"
 
 
 def test_parser_rejects_agent_override_with_no_agent() -> None:
@@ -23,11 +25,21 @@ def test_parser_rejects_agent_override_with_no_agent() -> None:
         parse_args(["my-feature", "--no-agent", "--agent", "claude"])
 
 
+@pytest.mark.parametrize(
+    "arguments", [["my-feature", "--no-agent", "--prompt", "do it"], ["setup", "--prompt", ""]]
+)
+def test_parser_rejects_invalid_prompt_overrides(arguments: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(arguments)
+
+
 def test_load_project_config_includes_built_in_and_custom_agents(tmp_path: Path) -> None:
     (tmp_path / "new-feature.toml").write_text(
         """
 default_agent = "claude"
 agents = { claude = ["claude", "--permission-mode", "acceptEdits"], custom = ["custom-agent"] }
+create_prompt = "Create only the API."
+setup_prompt = "Configure the Python tooling."
 """,
         encoding="utf-8",
     )
@@ -40,6 +52,14 @@ agents = { claude = ["claude", "--permission-mode", "acceptEdits"], custom = ["c
         "claude": ("claude", "--permission-mode", "acceptEdits"),
         "custom": ("custom-agent",),
     }
+    assert config.create_prompt == "Create only the API."
+    assert config.setup_prompt == "Configure the Python tooling."
+
+
+def test_resolve_prompt_prefers_invocation_override_then_project_config() -> None:
+    assert resolve_prompt("default", "configured", "override") == "override"
+    assert resolve_prompt("default", "configured", None) == "configured"
+    assert resolve_prompt("default", None, None) == "default"
 
 
 def test_resolve_agent_prefers_configured_names_and_parses_commands() -> None:
