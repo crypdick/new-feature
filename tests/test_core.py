@@ -25,10 +25,15 @@ def test_bare_feature_name_is_create_command():
     assert args.no_agent is True
 
 
-def test_parser_accepts_merge_feature_command():
-    args = parse_args(["merge-feature", "my-feature"])
-    assert args.command == "merge-feature"
+def test_parser_accepts_merge_command():
+    args = parse_args(["merge", "my-feature"])
+    assert args.command == "merge"
     assert args.name == "my-feature"
+
+
+def test_parser_rejects_removed_merge_feature_command():
+    with pytest.raises(SystemExit):
+        parse_args(["merge-feature", "my-feature"])
 
 
 def test_parser_accepts_teardown_force_command():
@@ -264,7 +269,7 @@ WEB_PORT = { allocate = "port", min = 3200, max = 3201 }
     assert (tmp_path / ".worktrees" / "my-feature" / "setup-port.txt").read_text(encoding="utf-8") == "3200"
 
 
-def test_merge_feature_runs_checks_and_commits_merge(tmp_path: Path, monkeypatch):
+def test_merge_runs_checks_and_commits_merge(tmp_path: Path, monkeypatch):
     from tests.conftest import init_git_repo
 
     init_git_repo(
@@ -287,13 +292,13 @@ push = false
     (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "add feature"], cwd=worktree, check=True)
-    assert main(["merge-feature", "my-feature"]) == 0
+    assert main(["merge", "my-feature"]) == 0
     assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "done\n"
     manifest = load_manifest(tmp_path)
     assert manifest.features["my_feature"].status == "merged"
 
 
-def test_merge_feature_requires_clean_target_checkout(
+def test_merge_requires_clean_target_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from tests.conftest import init_git_repo
@@ -303,7 +308,7 @@ def test_merge_feature_requires_clean_target_checkout(
 
     assert main(["my-feature", "--no-agent"]) == 0
 
-    assert main(["merge-feature", "my-feature"]) == 1
+    assert main(["merge", "my-feature"]) == 1
     assert "target checkout has uncommitted changes" in capsys.readouterr().err
 
 

@@ -95,7 +95,7 @@ def test_merge_start_failure_aborts_transaction(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(cli, "abort_merge", aborted.append)
 
     with pytest.raises(NewFeatureError, match="conflict"):
-        cli._merge_feature(tmp_path, "demo")
+        cli._merge(tmp_path, "demo")
     assert aborted == [tmp_path]
 
 
