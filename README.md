@@ -31,23 +31,15 @@ uvx new-feature doctor
 uvx new-feature doctor --repair
 ```
 
-## Codex target-branch guard
+## Codex hook
 
-Install the optional global Codex hook:
+Install the Codex hook:
 
 ```bash
 new-feature install-codex-hook
 ```
 
-Restart Codex and use `/hooks` to review and trust the new command hook. The guard denies direct Codex
-file edits when the destination repository is checked out on its configured `target_branch` (`main` by
-default). Its denial tells Codex to create a managed worktree with
-`new-feature <feature-name> --no-agent` and continue there. Existing hooks in `~/.codex/hooks.json` are
-preserved, and running the installer again updates the existing guard instead of adding a duplicate.
-
-This is a guardrail for Codex's direct edit tool, not a security boundary: Codex hooks do not intercept
-every possible shell-side write. See the [Codex hooks documentation](https://learn.chatgpt.com/codex/hooks)
-for the current hook lifecycle and trust model.
+The hook forces Codex to use `new-feature` for feature work in a repository.
 
 ## Project Config
 
