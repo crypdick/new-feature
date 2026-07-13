@@ -5,7 +5,18 @@ repo_url: https://github.com/crypdick/new-feature
 edit_uri: edit/main/
 
 theme:
-  name: mkdocs
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+    accent: teal
+  features:
+    - navigation.tabs
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - content.code.copy
 
 plugins:
   - search

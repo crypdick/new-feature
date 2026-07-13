@@ -63,6 +63,7 @@ dev = [
     "flynt>=1.0.6",
     "mkdocs>=1.6.1",
     "mkdocs-gen-files<0.6",
+    "mkdocs-material>=9.7.6",
     "mkdocstrings[python]>=1.0.6",
     "mypy>=2.2.0",
     "pre-commit>=4.6.0",
