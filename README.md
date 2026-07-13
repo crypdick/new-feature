@@ -33,13 +33,13 @@ uvx new-feature doctor --repair
 
 ## Codex hook
 
-Install the Codex hook:
+Install the Codex hook in the current repository:
 
 ```bash
 new-feature install-codex-hook
 ```
 
-The hook forces Codex to use `new-feature` for feature work in a repository.
+This writes `.codex/hooks.json`; Codex loads the guard only for this trusted repository.
 
 ## Project Config
 

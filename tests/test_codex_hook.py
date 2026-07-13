@@ -194,19 +194,21 @@ def test_hook_fails_open_when_git_cannot_start(tmp_path: Path, monkeypatch: pyte
 
 
 def test_installer_creates_hook_file_and_is_idempotent(tmp_path: Path) -> None:
-    hooks_path = install_codex_hook(codex_home=tmp_path, executable=Path("/tool/python"))
-    install_codex_hook(codex_home=tmp_path, executable=Path("/tool/python"))
+    hooks_path = install_codex_hook(tmp_path)
+    install_codex_hook(tmp_path)
 
     document = json.loads(hooks_path.read_text(encoding="utf-8"))
     groups = document["hooks"]["PreToolUse"]
     assert len(groups) == 1
     assert groups[0]["matcher"] == "Bash|Edit|Write|apply_patch"
-    assert groups[0]["hooks"][0]["command"] == "/tool/python -m new_feature codex-hook"
+    assert groups[0]["hooks"][0]["command"] == "new-feature codex-hook"
+    assert hooks_path == tmp_path / ".codex" / "hooks.json"
     assert hooks_path.stat().st_mode & 0o777 == 0o600
 
 
 def test_installer_preserves_hooks_and_migrates_prototype(tmp_path: Path) -> None:
-    hooks_path = tmp_path / "hooks.json"
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    hooks_path.parent.mkdir()
     hooks_path.write_text(
         json.dumps({
             "custom": True,
@@ -232,14 +234,14 @@ def test_installer_preserves_hooks_and_migrates_prototype(tmp_path: Path) -> Non
     )
     hooks_path.chmod(0o640)
 
-    install_codex_hook(codex_home=tmp_path, executable=Path("/new python"))
+    install_codex_hook(tmp_path)
 
     document = json.loads(hooks_path.read_text(encoding="utf-8"))
     assert document["custom"] is True
     assert document["hooks"]["PostToolUse"] == [{"hooks": []}]
     groups = document["hooks"]["PreToolUse"]
     assert len(groups) == 4
-    assert groups[3]["hooks"][0]["command"] == "'/new python' -m new_feature codex-hook"
+    assert groups[3]["hooks"][0]["command"] == "new-feature codex-hook"
     assert hooks_path.stat().st_mode & 0o777 == 0o640
 
 
@@ -253,17 +255,24 @@ def test_installer_preserves_hooks_and_migrates_prototype(tmp_path: Path) -> Non
     ],
 )
 def test_installer_rejects_invalid_hook_documents(tmp_path: Path, document: str, message: str) -> None:
-    (tmp_path / "hooks.json").write_text(document, encoding="utf-8")
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(document, encoding="utf-8")
 
     with pytest.raises(NewFeatureError, match=message):
-        install_codex_hook(codex_home=tmp_path)
+        install_codex_hook(tmp_path)
 
 
-def test_install_command_uses_codex_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
+def test_install_command_uses_current_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
 
     assert cli.main(["install-codex-hook"]) == 0
-    assert (tmp_path / "hooks.json").exists()
+    assert (tmp_path / ".codex" / "hooks.json").exists()
     assert "review and trust" in capsys.readouterr().out
 
 
@@ -277,8 +286,8 @@ def test_installer_removes_temporary_file_after_write_failure(
     )
 
     with pytest.raises(TypeError, match="not serializable"):
-        install_codex_hook(codex_home=tmp_path)
-    assert list(tmp_path.iterdir()) == []
+        install_codex_hook(tmp_path)
+    assert list((tmp_path / ".codex").iterdir()) == []
 
 
 def test_internal_codex_hook_command_runs_without_repository(

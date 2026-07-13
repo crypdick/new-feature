@@ -99,12 +99,12 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
+    root = repo_root(Path.cwd())
     if args.command == "install-codex-hook":
-        path = install_codex_hook()
+        path = install_codex_hook(root)
         print(f"Installed Codex target-branch guard in {path}")
         print("Restart Codex, then review and trust the hook with /hooks.")
         return 0
-    root = repo_root(Path.cwd())
     return _dispatch(args, root)
 
 
