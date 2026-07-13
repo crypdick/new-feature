@@ -4,7 +4,6 @@ _CONFIGURATION_GUIDE = """\
 Configuration (pyproject.toml):
   [tool.new-feature]
   target_branch = "main"           # branch each feature starts from and merges into
-  branch_prefix = "feature/"        # prefix for generated feature branches
   agent = ["codex"]                 # executable and fixed arguments; prompt is appended
   push = false                      # push target_branch after a successful merge
   setup = ["uv sync"]               # run in the feature worktree after creation
@@ -20,9 +19,8 @@ Configuration (pyproject.toml):
   CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
   APP_ENV = { value = "development" }
 
-All settings are optional. The defaults are target_branch = "main",
-branch_prefix = "feature/", agent = ["codex"], push = false, and empty command
-and environment lists.
+All settings are optional. The defaults are target_branch = "main", agent = ["codex"],
+push = false, and empty command and environment lists.
 
 Configured commands are shell strings run sequentially. They receive the allocated
 environment plus NEW_FEATURE_NAME, NEW_FEATURE_SLUG, NEW_FEATURE_BRANCH,
@@ -63,7 +61,7 @@ _STATE_GUIDE = """\
 Managed state and safety:
   - setup launches an agent in the current checkout to configure new-feature itself.
   - Codex users can run install-codex-hook to enforce the managed worktree workflow.
-  - Worktrees live at .worktrees/SLUG and branches use branch_prefix + SLUG.
+  - Worktrees live at .worktrees/SLUG and branches are named SLUG.
   - .new-feature/ and .worktrees/ are automatically added to .gitignore.
   - Setup failure triggers forced cleanup of the partial feature.
   - merge requires clean feature and target checkouts and aborts failed merges.

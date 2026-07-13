@@ -213,7 +213,7 @@ def _create(root: Path, name: str, *, no_agent: bool, dry_run: bool) -> int:
     config = load_project_config(root)
     slug = slugify(name)
     key = feature_key(slug)
-    branch = f"{config.branch_prefix}{slug}"
+    branch = slug
     worktree = root / ".worktrees" / slug
 
     if dry_run:

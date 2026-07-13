@@ -59,7 +59,6 @@ Add config to the target repo's `pyproject.toml`:
 ```toml
 [tool.new-feature]
 target_branch = "main"
-branch_prefix = "feature/"
 agent = ["codex"]
 push = false
 setup = ["uv sync"]
@@ -96,7 +95,7 @@ Supported env entries:
 
 ## Lifecycle
 
-`new-feature my-feature` creates `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches the configured agent in the worktree. It automatically adds `.new-feature/` and `.worktrees/` to `.gitignore`. If setup fails, it runs a forced teardown so the partial worktree, branch, and manifest entry do not linger.
+`new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches the configured agent in the worktree. It automatically adds `.new-feature/` and `.worktrees/` to `.gitignore`. If setup fails, it runs a forced teardown so the partial worktree, branch, and manifest entry do not linger.
 
 `new-feature list` shows each managed feature and its current Git/worktree state. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift. `doctor --repair` removes only manifest entries whose worktree and branch are both already gone.
 

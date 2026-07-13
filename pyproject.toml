@@ -48,7 +48,6 @@ packages = ["src/new_feature"]
 
 [tool.new-feature]
 target_branch = "main"
-branch_prefix = "feature/"
 agent = ["codex"]
 push = false
 setup = ["uv sync"]
