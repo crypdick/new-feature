@@ -14,6 +14,13 @@ current repository. The agent inspects the project, proposes a repository-specif
 configuration, asks about unresolved choices such as the optional Codex hook, and waits
 for approval before editing. Run it again to review and improve an existing integration.
 
+## Releases
+
+Changing `[project].version` in `pyproject.toml` and merging that change to `main`
+publishes the distributions to PyPI, tags the merged commit as `v<VERSION>`, and creates
+a GitHub Release. Keep the project version in `uv.lock` synchronized with `pyproject.toml`.
+The release workflow can also be run manually to recover from a partial release.
+
 ## Usage
 
 ```bash
