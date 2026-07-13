@@ -79,7 +79,7 @@ def test_top_level_help_explains_agent_workflow():
 @pytest.mark.parametrize(
     ("command", "expected"),
     [
-        ("create", 'agent = ["copilot", "--prompt"]'),
+        ("create", 'agents = { custom = ["custom-agent", "--prompt"] }'),
         ("setup", "only launches the agent"),
         ("merge", "Run this command from the control checkout"),
         ("teardown", "from the control checkout, not from the feature worktree"),
@@ -124,7 +124,8 @@ def test_load_project_config_defaults(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
     config = load_project_config(tmp_path)
     assert config.target_branch == "main"
-    assert config.agent == ("codex",)
+    assert config.default_agent == "codex"
+    assert config.agents == {"codex": ("codex",), "claude": ("claude",)}
     assert config.push is False
     assert config.setup == []
     assert config.pre_merge == []

@@ -6,7 +6,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-from new_feature.agent import build_initial_prompt, build_setup_prompt, launch_interactive_agent
+from new_feature.agent import (
+    build_initial_prompt,
+    build_setup_prompt,
+    launch_interactive_agent,
+    resolve_agent,
+)
 from new_feature.allocator import allocate_env
 from new_feature.codex_hook import TextStream, run_codex_hook
 from new_feature.codex_install import install_codex_hook
@@ -68,10 +73,16 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     create.add_argument("name", metavar="NAME", help="descriptive feature name; normalized to a slug")
-    create.add_argument(
+    agent_selection = create.add_mutually_exclusive_group()
+    agent_selection.add_argument(
         "--no-agent",
         action="store_true",
         help="set up the feature without spawning the configured agent subprocess",
+    )
+    agent_selection.add_argument(
+        "--agent",
+        metavar="COMMAND",
+        help="use a configured agent name or an executable command for this invocation",
     )
     create.add_argument(
         "--dry-run",
@@ -86,6 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
         description=SETUP_DESCRIPTION,
         epilog="Example:\n  new-feature setup",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    setup.add_argument(
+        "--agent",
+        metavar="COMMAND",
+        help="use a configured agent name or an executable command for this invocation",
     )
     setup.set_defaults(command="setup")
 
@@ -190,9 +206,15 @@ def _run(args: argparse.Namespace) -> int:
 
 def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "setup":
-        return _setup(root)
+        return _setup(root, agent_override=args.agent)
     if args.command == "create":
-        return _create(root, args.name, no_agent=args.no_agent, dry_run=args.dry_run)
+        return _create(
+            root,
+            args.name,
+            no_agent=args.no_agent,
+            dry_run=args.dry_run,
+            agent_override=args.agent,
+        )
     if args.command == "merge":
         return _merge(root, args.name)
     if args.command == "teardown":
@@ -204,12 +226,19 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     raise NewFeatureError(f"unknown command: {args.command}")
 
 
-def _setup(root: Path) -> int:
+def _setup(root: Path, *, agent_override: str | None) -> int:
     config = load_project_config(root)
-    return launch_interactive_agent(config.agent, root, {}, build_setup_prompt())
+    return launch_interactive_agent(resolve_agent(config, agent_override), root, {}, build_setup_prompt())
 
 
-def _create(root: Path, name: str, *, no_agent: bool, dry_run: bool) -> int:
+def _create(
+    root: Path,
+    name: str,
+    *,
+    no_agent: bool,
+    dry_run: bool,
+    agent_override: str | None,
+) -> int:
     config = load_project_config(root)
     slug = slugify(name)
     key = feature_key(slug)
@@ -274,7 +303,7 @@ def _create(root: Path, name: str, *, no_agent: bool, dry_run: bool) -> int:
     if no_agent:
         return 0
     prompt = build_initial_prompt(slug)
-    return launch_interactive_agent(config.agent, worktree, env, prompt)
+    return launch_interactive_agent(resolve_agent(config, agent_override), worktree, env, prompt)
 
 
 def _merge(root: Path, name: str) -> int:

@@ -3,7 +3,8 @@ from __future__ import annotations
 _CONFIGURATION_GUIDE = """\
 Configuration (new-feature.toml, or [tool.new-feature] in pyproject.toml):
   target_branch = "main"           # branch each feature starts from and merges into
-  agent = ["codex"]                 # executable and fixed arguments; prompt is appended
+  default_agent = "codex"            # configured name or executable command
+  agents = { codex = ["codex"], claude = ["claude"] }
   push = false                      # push target_branch after a successful merge
   setup = ["uv sync"]               # run in the feature worktree after creation
   pre_merge = ["uv run pytest"]     # run in the feature worktree before merging
@@ -18,8 +19,9 @@ Configuration (new-feature.toml, or [tool.new-feature] in pyproject.toml):
   CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
   APP_ENV = { value = "development" }
 
-All settings are optional. The defaults are target_branch = "main", agent = ["codex"],
-push = false, and empty command and environment lists.
+All settings are optional. The defaults are target_branch = "main", default_agent = "codex",
+agents = { codex = ["codex"], claude = ["claude"] }, push = false, and empty command and
+environment lists.
 
 If both new-feature.toml and pyproject.toml exist, new-feature.toml takes precedence.
 For pyproject.toml, place these settings under [tool.new-feature] and use
@@ -101,10 +103,12 @@ If you are already a coding agent, use --no-agent to prevent spawning another ag
 a subprocess. Setup still runs; then work inside .worktrees/SLUG yourself. --dry-run
 only prints proposed environment values and does not create or reserve anything.
 
-The configured agent command is an argv prefix. new-feature appends its generated
-feature prompt as the final argument and launches the command in the worktree with the
-allocated environment. For an agent requiring a prompt flag, use for example:
-  agent = ["copilot", "--prompt"]
+The selected agent command is an argv prefix. new-feature appends its generated feature prompt as
+the final argument and launches the command in the worktree with the allocated environment.
+Use --agent NAME to select a configured agent, or --agent "COMMAND --FLAG" to run an executable
+command directly. For an agent requiring a prompt flag, use for example:
+  default_agent = "custom"
+  agents = {{ custom = ["custom-agent", "--prompt"] }}
 
 {_CONFIGURATION_GUIDE}"""
 

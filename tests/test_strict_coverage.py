@@ -186,20 +186,30 @@ def test_config_validation_errors(tmp_path: Path) -> None:
     with pytest.raises(NewFeatureError, match="setup must be a list"):
         load_project_config(tmp_path)
 
-    (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\nagent = "codex"\n', encoding="utf-8")
-    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+    (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\ndefault_agent = ""\n', encoding="utf-8")
+    with pytest.raises(NewFeatureError, match="default_agent must be a non-empty string"):
         load_project_config(tmp_path)
 
-    (tmp_path / "pyproject.toml").write_text("[tool.new-feature]\nagent = []\n", encoding="utf-8")
-    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+    (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\nagents = "codex"\n', encoding="utf-8")
+    with pytest.raises(NewFeatureError, match="agents must be a table"):
         load_project_config(tmp_path)
 
-    (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\nagent = ["codex", ""]\n', encoding="utf-8")
-    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.new-feature]\nagents = { codex = [] }\n", encoding="utf-8"
+    )
+    with pytest.raises(NewFeatureError, match="agents.codex must be a non-empty list"):
         load_project_config(tmp_path)
 
-    (tmp_path / "pyproject.toml").write_text("[tool.new-feature]\nagent = [1]\n", encoding="utf-8")
-    with pytest.raises(NewFeatureError, match="agent must be a non-empty list"):
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.new-feature]\nagents = { codex = [1] }\n", encoding="utf-8"
+    )
+    with pytest.raises(NewFeatureError, match="agents.codex must be a non-empty list"):
+        load_project_config(tmp_path)
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.new-feature]\nagents = { "" = ["codex"] }\n', encoding="utf-8"
+    )
+    with pytest.raises(NewFeatureError, match="agents names must be non-empty strings"):
         load_project_config(tmp_path)
 
     (tmp_path / "pyproject.toml").write_text('[tool.new-feature.env]\nBAD = "value"\n', encoding="utf-8")
@@ -287,13 +297,35 @@ def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.Mo
     wrapper.chmod(0o755)
     init_git_repo(
         tmp_path,
-        f'[project]\nname = "demo"\n\n[tool.new-feature]\nagent = ["{wrapper}", "--prompt"]\n',
+        (
+            f'[project]\nname = "demo"\n\n[tool.new-feature]\n'
+            f'default_agent = "test"\nagents = {{ test = ["{wrapper}", "--prompt"] }}\n'
+        ),
     )
     monkeypatch.chdir(tmp_path)
 
     assert main(["my-feature"]) == 0
     output = tmp_path / ".worktrees" / "my-feature" / "agent-ran.txt"
     assert output.read_text(encoding="utf-8").startswith("my-feature|--prompt|Interview the user")
+
+
+def test_create_launches_unconfigured_agent_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.conftest import init_git_repo
+
+    agent = tmp_path / "agent.py"
+    agent.write_text(
+        'from pathlib import Path\nimport sys\nPath("agent-ran.txt").write_text("|".join(sys.argv[1:]))\n',
+        encoding="utf-8",
+    )
+    wrapper = tmp_path / "agent"
+    wrapper.write_text(f'#!/bin/sh\nexec {sys.executable} {agent} "$@"\n', encoding="utf-8")
+    wrapper.chmod(0o755)
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["my-feature", "--agent", f"{wrapper} --baz-flag"]) == 0
+    output = tmp_path / ".worktrees" / "my-feature" / "agent-ran.txt"
+    assert output.read_text(encoding="utf-8").startswith("--baz-flag|Interview the user")
 
 
 def test_setup_launches_configured_agent_in_current_repo_without_lifecycle_writes(
@@ -311,11 +343,14 @@ def test_setup_launches_configured_agent_in_current_repo_without_lifecycle_write
     wrapper.chmod(0o755)
     init_git_repo(
         tmp_path,
-        f'[project]\nname = "demo"\n\n[tool.new-feature]\nagent = ["{wrapper}", "--prompt"]\n',
+        (
+            f'[project]\nname = "demo"\n\n[tool.new-feature]\n'
+            f'default_agent = "test"\nagents = {{ test = ["{wrapper}", "--prompt"] }}\n'
+        ),
     )
     monkeypatch.chdir(tmp_path)
 
-    assert main(["setup"]) == 0
+    assert main(["setup", "--agent", "test"]) == 0
     output = (tmp_path / "setup-agent-ran.txt").read_text(encoding="utf-8")
     assert output.startswith("--prompt|Set up or improve this repository")
     assert not (tmp_path / ".new-feature").exists()

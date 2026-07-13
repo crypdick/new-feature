@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
-from new_feature.config import AgentCommand
+from new_feature.config import AgentCommand, ProjectConfig
 from new_feature.errors import NewFeatureError
 
 
@@ -25,13 +26,28 @@ def build_setup_prompt() -> str:
         "appropriate target branch, agent command, setup and teardown commands, pre-merge "
         "and post-merge checks, and isolated environment allocations. Present a concise "
         "proposed plan and interview the user about only the material choices that cannot "
-        "be inferred safely. Explicitly ask whether they want to install the optional "
+        "be inferred safely, including default_agent and any named agents. "
+        "Explicitly ask whether they want to install the optional "
         "repository-local Codex hook. Do not edit files or install the hook until the user "
         "approves the plan. After approval, implement and verify the configuration, "
         "improving existing configuration when present, and explain the resulting create, "
         "merge, and teardown workflow. Do not run `new-feature setup` again from this "
         "agent session."
     )
+
+
+def resolve_agent(config: ProjectConfig, override: str | None) -> AgentCommand:
+    selection = config.default_agent if override is None else override
+    configured = config.agents.get(selection)
+    if configured is not None:
+        return configured
+    try:
+        command = tuple(shlex.split(selection))
+    except ValueError as exc:
+        raise NewFeatureError(f"invalid agent command: {exc}") from exc
+    if not command:
+        raise NewFeatureError("agent command cannot be empty")
+    return command
 
 
 def launch_interactive_agent(agent: AgentCommand, worktree: Path, env: dict[str, str], prompt: str) -> int:
