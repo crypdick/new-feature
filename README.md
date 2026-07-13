@@ -20,7 +20,7 @@ uvx new-feature my-feature
 # Create a feature worktree without launching another agent.
 uvx new-feature my-feature --no-agent
 # Merges the worktree into the main branch
-uvx new-feature merge-feature my-feature
+uvx new-feature merge my-feature
 # Run configured teardown and remove the feature worktree.
 uvx new-feature teardown my-feature
 # Teardown a worktree even if it has uncommitted work.
@@ -97,6 +97,6 @@ Supported env entries:
 
 `new-feature list` shows each managed feature and its current Git/worktree state. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift. `doctor --repair` removes only manifest entries whose worktree and branch are both already gone.
 
-`new-feature merge-feature my-feature` runs pre-merge checks in the feature worktree, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`.
+`new-feature merge my-feature` runs pre-merge checks in the feature worktree, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`.
 
 `new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the worktree has uncommitted changes or the branch has commits that are not in the target branch, pass `--force` to abandon them deliberately.

@@ -31,7 +31,7 @@ from new_feature.slug import feature_key, slugify
 
 _COMMANDS = {
     "create",
-    "merge-feature",
+    "merge",
     "teardown",
     "list",
     "doctor",
@@ -52,9 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--dry-run", action="store_true")
     create.set_defaults(command="create")
 
-    merge = subparsers.add_parser("merge-feature")
+    merge = subparsers.add_parser("merge", help="merge a feature into its target branch")
     merge.add_argument("name")
-    merge.set_defaults(command="merge-feature")
+    merge.set_defaults(command="merge")
 
     teardown = subparsers.add_parser("teardown")
     teardown.add_argument("name")
@@ -111,8 +111,8 @@ def _run(args: argparse.Namespace) -> int:
 def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "create":
         return _create(root, args.name, no_agent=args.no_agent, dry_run=args.dry_run)
-    if args.command == "merge-feature":
-        return _merge_feature(root, args.name)
+    if args.command == "merge":
+        return _merge(root, args.name)
     if args.command == "teardown":
         return _teardown(root, args.name, force=args.force)
     if args.command == "list":
@@ -190,7 +190,7 @@ def _create(root: Path, name: str, *, no_agent: bool, dry_run: bool) -> int:
     return launch_interactive_agent(config.agent, worktree, env, prompt)
 
 
-def _merge_feature(root: Path, name: str) -> int:
+def _merge(root: Path, name: str) -> int:
     config = load_project_config(root)
     key = feature_key(slugify(name))
     with manifest_lock(root):

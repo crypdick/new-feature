@@ -264,7 +264,7 @@ def test_main_reports_unknown_features(tmp_path: Path, monkeypatch: pytest.Monke
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
 
-    assert main(["merge-feature", "missing"]) == 1
+    assert main(["merge", "missing"]) == 1
     assert main(["teardown", "missing", "--force"]) == 1
 
 
@@ -314,13 +314,13 @@ def test_merge_rejects_dirty_worktree_and_aborts_failed_post_merge(
     assert main(["my-feature", "--no-agent"]) == 0
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "dirty.txt").write_text("dirty\n", encoding="utf-8")
-    assert main(["merge-feature", "my-feature"]) == 1
+    assert main(["merge", "my-feature"]) == 1
     subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "dirty.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "dirty"], cwd=worktree, check=True)
 
-    assert main(["merge-feature", "my-feature"]) == 1
+    assert main(["merge", "my-feature"]) == 1
     assert not (tmp_path / ".git" / "MERGE_HEAD").exists()
 
 
@@ -338,7 +338,7 @@ def test_teardown_after_merge_uses_non_force_branch_delete(
     (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "feature"], cwd=worktree, check=True)
-    assert main(["merge-feature", "my-feature"]) == 0
+    assert main(["merge", "my-feature"]) == 0
 
     assert main(["teardown", "my-feature"]) == 0
     assert load_manifest(tmp_path).features == {}
@@ -360,7 +360,7 @@ def test_merge_reports_missing_record_after_merge(tmp_path: Path, monkeypatch: p
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "feature"], cwd=worktree, check=True)
 
-    assert main(["merge-feature", "my-feature"]) == 1
+    assert main(["merge", "my-feature"]) == 1
 
 
 def test_main_reports_unknown_internal_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -376,7 +376,7 @@ def test_main_reports_unknown_internal_command(tmp_path: Path, monkeypatch: pyte
     assert cli.main([]) == 1
 
 
-def test_merge_feature_pushes_when_configured_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_merge_pushes_when_configured_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from contextlib import nullcontext
 
     from new_feature import cli
@@ -404,6 +404,6 @@ def test_merge_feature_pushes_when_configured_unit(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(cli, "push_target", lambda _root, *, target_branch: pushed.append(target_branch))
     monkeypatch.setattr(cli, "save_manifest", lambda _root, _manifest: None)
 
-    assert cli._merge_feature(tmp_path, "my-feature") == 0
+    assert cli._merge(tmp_path, "my-feature") == 0
     assert pushed == ["main"]
     assert record.status == "merged"
