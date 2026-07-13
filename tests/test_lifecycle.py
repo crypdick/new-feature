@@ -98,3 +98,21 @@ def test_teardown_reports_a_missing_worktree(
     assert main(["teardown", "my-feature"]) == 1
     assert "feature worktree is missing" in capsys.readouterr().err
     assert "my_feature" in load_manifest(tmp_path).features
+
+
+def test_doctor_repair_removes_a_missing_worktree_with_a_merged_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    subprocess.run(["git", "worktree", "remove", "--force", str(worktree)], cwd=tmp_path, check=True)
+
+    assert main(["doctor", "--repair"]) == 0
+    assert "removed missing worktree and merged branch my-feature" in capsys.readouterr().out
+    assert load_manifest(tmp_path).features == {}
+    branches = subprocess.check_output(["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True)
+    assert branches.strip() == ""
