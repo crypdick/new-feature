@@ -4,9 +4,9 @@ import hashlib
 import json
 import re
 import tomllib
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import assert_never, cast
 
 from new_feature.errors import NewFeatureError
 
@@ -34,14 +34,39 @@ _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
 @dataclass(frozen=True)
-class EnvSpec:
-    allocate: str | None = None
-    value: str | None = None
-    minimum: int | None = None
-    maximum: int | None = None
-    prefix: str | None = None
+class LiteralEnvSpec:
+    value: str
+
+
+@dataclass(frozen=True)
+class PortEnvSpec:
+    minimum: int = 1024
+    maximum: int = 65535
+
+
+@dataclass(frozen=True)
+class IntegerEnvSpec:
+    minimum: int = 0
+    maximum: int = 65535
+
+
+@dataclass(frozen=True)
+class NameEnvSpec:
+    prefix: str
     max_length: int | None = None
-    base: str | None = None
+
+
+@dataclass(frozen=True)
+class SlugEnvSpec:
+    prefix: str
+
+
+@dataclass(frozen=True)
+class PathEnvSpec:
+    base: str = ".new-feature"
+
+
+type EnvSpec = LiteralEnvSpec | PortEnvSpec | IntegerEnvSpec | NameEnvSpec | SlugEnvSpec | PathEnvSpec
 
 
 @dataclass(frozen=True)
@@ -126,7 +151,7 @@ def _env_spec(key: str, raw: object) -> EnvSpec:
 def _literal_env_spec(key: str, raw: RawTable) -> EnvSpec:
     if set(raw) != {"value"}:
         raise NewFeatureError(f"env spec {key} with value cannot set allocator options")
-    return EnvSpec(value=_required_string_option(raw, "value", env_key=key))
+    return LiteralEnvSpec(value=_required_string_option(raw, "value", env_key=key))
 
 
 def _allocated_env_spec(key: str, raw: RawTable) -> EnvSpec:
@@ -138,26 +163,50 @@ def _allocated_env_spec(key: str, raw: RawTable) -> EnvSpec:
     if unexpected:
         names = ", ".join(sorted(unexpected))
         raise NewFeatureError(f"unsupported options for {key} {allocator} allocator: {names}")
+    return _parse_allocator(key, allocator, raw)
 
+
+def _parse_allocator(key: str, allocator: str, raw: RawTable) -> EnvSpec:
+    match allocator:
+        case "port":
+            minimum, maximum = _bounds(key, raw, default_minimum=1024, default_maximum=65535)
+            for field_name, field_value in (("min", minimum), ("max", maximum)):
+                if not 1 <= field_value <= 65535:
+                    raise NewFeatureError(f"env spec {key}.{field_name} must be between 1 and 65535")
+            return PortEnvSpec(minimum=minimum, maximum=maximum)
+        case "integer":
+            minimum, maximum = _bounds(key, raw, default_minimum=0, default_maximum=65535)
+            return IntegerEnvSpec(minimum=minimum, maximum=maximum)
+        case "name":
+            max_length = _optional_int(raw, "max_length", env_key=key)
+            if max_length is not None and max_length < 9:
+                raise NewFeatureError(f"env spec {key}.max_length must be at least 9")
+            return NameEnvSpec(
+                prefix=_optional_string(raw, "prefix", env_key=key) or key.lower(),
+                max_length=max_length,
+            )
+        case "slug":
+            return SlugEnvSpec(prefix=_optional_string(raw, "prefix", env_key=key) or key.lower())
+        case "path":
+            return PathEnvSpec(base=_optional_string(raw, "base", env_key=key) or ".new-feature")
+        case _:  # pragma: no cover - allocator was checked against _ALLOCATOR_KEYS above
+            raise AssertionError(allocator)
+
+
+def _bounds(
+    key: str,
+    raw: RawTable,
+    *,
+    default_minimum: int,
+    default_maximum: int,
+) -> tuple[int, int]:
     minimum = _optional_int(raw, "min", env_key=key)
     maximum = _optional_int(raw, "max", env_key=key)
     if minimum is not None and maximum is not None and minimum > maximum:
         raise NewFeatureError(f"env spec {key}.min must not exceed max")
-    if allocator == "port":
-        for field_name, field_value in (("min", minimum), ("max", maximum)):
-            if field_value is not None and not 1 <= field_value <= 65535:
-                raise NewFeatureError(f"env spec {key}.{field_name} must be between 1 and 65535")
-
-    max_length = _optional_int(raw, "max_length", env_key=key)
-    if max_length is not None and max_length < 9:
-        raise NewFeatureError(f"env spec {key}.max_length must be at least 9")
-    return EnvSpec(
-        allocate=allocator,
-        minimum=minimum,
-        maximum=maximum,
-        prefix=_optional_string(raw, "prefix", env_key=key),
-        max_length=max_length,
-        base=_optional_string(raw, "base", env_key=key),
+    return (
+        default_minimum if minimum is None else minimum,
+        default_maximum if maximum is None else maximum,
     )
 
 
@@ -170,10 +219,28 @@ def config_fingerprint(config: ProjectConfig) -> str:
         "pre_merge": config.pre_merge,
         "post_merge": config.post_merge,
         "teardown": config.teardown,
-        "env": {key: asdict(value) for key, value in sorted(config.env.items())},
+        "env": {key: _env_fingerprint(value) for key, value in sorted(config.env.items())},
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _env_fingerprint(spec: EnvSpec) -> dict[str, object]:
+    match spec:
+        case LiteralEnvSpec(value=value):
+            return {"value": value}
+        case PortEnvSpec(minimum=minimum, maximum=maximum):
+            return {"allocate": "port", "minimum": minimum, "maximum": maximum}
+        case IntegerEnvSpec(minimum=minimum, maximum=maximum):
+            return {"allocate": "integer", "minimum": minimum, "maximum": maximum}
+        case NameEnvSpec(prefix=prefix, max_length=max_length):
+            return {"allocate": "name", "prefix": prefix, "max_length": max_length}
+        case SlugEnvSpec(prefix=prefix):
+            return {"allocate": "slug", "prefix": prefix}
+        case PathEnvSpec(base=base):
+            return {"allocate": "path", "base": base}
+        case _ as unreachable:  # pragma: no cover - EnvSpec is a closed union
+            assert_never(unreachable)
 
 
 def load_project_config(repo_root: Path) -> ProjectConfig:

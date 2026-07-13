@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from new_feature import cli
+from new_feature import atomic_file as atomic_file_module
 from new_feature import codex_hook as codex_hook_module
-from new_feature import codex_install as codex_install_module
 from new_feature.codex_hook import run_codex_hook
 from new_feature.codex_install import install_codex_hook
 from new_feature.errors import NewFeatureError
@@ -112,6 +112,15 @@ def test_hook_supports_legacy_edit_payload_and_ignores_unrelated_input(tmp_path:
             "new-feature <feature-name>",
         ),
         ("git --no-pager worktree remove /tmp/demo", "remove", "new-feature teardown"),
+        ("FEATURE=x git worktree add /tmp/demo", "add", "new-feature <feature-name>"),
+        ("env FEATURE=x git worktree remove /tmp/demo", "remove", "new-feature teardown"),
+        ("/usr/bin/env -i git worktree add /tmp/demo", "add", "new-feature <feature-name>"),
+        ("env -- git worktree add /tmp/demo", "add", "new-feature <feature-name>"),
+        ("env -u FEATURE git worktree remove /tmp/demo", "remove", "new-feature teardown"),
+        ("env --unset=FEATURE git worktree add /tmp/demo", "add", "new-feature <feature-name>"),
+        ("command git worktree remove /tmp/demo", "remove", "new-feature teardown"),
+        ("exec git worktree add /tmp/demo", "add", "new-feature <feature-name>"),
+        ("sudo -n git worktree remove /tmp/demo", "remove", "new-feature teardown"),
     ],
 )
 def test_hook_denies_direct_worktree_add_and_remove(
@@ -141,6 +150,10 @@ def test_hook_denies_direct_worktree_add_and_remove(
         "git worktree 'unterminated",
         "git",
         "git && echo done",
+        ";",
+        "FEATURE=x",
+        "env",
+        "env -u",
     ],
 )
 def test_hook_allows_other_worktree_and_new_feature_commands(tmp_path: Path, command: str) -> None:
@@ -245,6 +258,40 @@ def test_installer_preserves_hooks_and_migrates_prototype(tmp_path: Path) -> Non
     assert hooks_path.stat().st_mode & 0o777 == 0o640
 
 
+def test_installer_preserves_sibling_handlers_when_updating_guard(tmp_path: Path) -> None:
+    hooks_path = tmp_path / ".codex" / "hooks.json"
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(
+        json.dumps({
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {"type": "command", "command": "new-feature codex-hook"},
+                            {"type": "command", "command": "keep-me"},
+                        ],
+                    },
+                    {
+                        "matcher": "Edit",
+                        "hooks": [{"type": "command", "command": "new-feature codex-hook"}],
+                    },
+                ]
+            }
+        }),
+        encoding="utf-8",
+    )
+
+    install_codex_hook(tmp_path)
+
+    groups = json.loads(hooks_path.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+    commands = [handler["command"] for group in groups for handler in group["hooks"]]
+    assert commands.count("new-feature codex-hook") == 1
+    assert "keep-me" in commands
+    sibling_group = next(group for group in groups if group["hooks"][0]["command"] == "keep-me")
+    assert sibling_group["matcher"] == "Bash"
+
+
 @pytest.mark.parametrize(
     ("document", "message"),
     [
@@ -280,12 +327,12 @@ def test_installer_removes_temporary_file_after_write_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        codex_install_module.json,
-        "dump",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(TypeError("not serializable")),
+        atomic_file_module.os,
+        "fsync",
+        lambda *_args: (_ for _ in ()).throw(OSError("disk failure")),
     )
 
-    with pytest.raises(TypeError, match="not serializable"):
+    with pytest.raises(OSError, match="disk failure"):
         install_codex_hook(tmp_path)
     assert list((tmp_path / ".codex").iterdir()) == []
 

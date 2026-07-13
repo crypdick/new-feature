@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
 from io import StringIO, TextIOWrapper
 from pathlib import Path
-from typing import NewType, cast
+from typing import TYPE_CHECKING, NewType, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from new_feature.config import load_project_config
 from new_feature.errors import NewFeatureError
@@ -19,6 +23,29 @@ type TextStream = StringIO | TextIOWrapper
 _DIRECT_EDIT_TOOLS = {"Write", "Edit", "apply_patch"}
 _WORKTREE_ACTIONS = {"add", "remove"}
 _SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*\Z")
+_COMMAND_WRAPPERS = {"command", "exec"}
+_ENV_OPTIONS_WITH_VALUES = {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"}
+_SUDO_OPTIONS_WITH_VALUES = {
+    "-C",
+    "--chdir",
+    "-D",
+    "--chroot",
+    "-g",
+    "--group",
+    "-h",
+    "--host",
+    "-p",
+    "--prompt",
+    "-R",
+    "--role",
+    "-r",
+    "--type",
+    "-T",
+    "--command-timeout",
+    "-u",
+    "--user",
+}
 _GIT_OPTIONS_WITH_VALUES = {
     "-C",
     "-c",
@@ -84,23 +111,76 @@ def _worktree_action(tool_input: object) -> WorktreeAction | None:
         tokens = list(lexer)
     except ValueError:
         return None
-    for index, word in enumerate(tokens):
-        if Path(word).name == "git" and _starts_shell_command(tokens, index):
-            action = _git_worktree_action(tokens, index + 1)
-            if action is not None:
-                return action
+    for command in _shell_commands(tokens):
+        git_arguments = _git_arguments(command)
+        if git_arguments is None:
+            continue
+        action = _git_worktree_action(git_arguments, 0)
+        if action is not None:
+            return action
     return None
 
 
-def _starts_shell_command(tokens: list[str], index: int) -> bool:
-    return index == 0 or tokens[index - 1] in _SHELL_SEPARATORS
+def _shell_commands(tokens: list[str]) -> Iterator[list[str]]:
+    start = 0
+    for index, token in enumerate(tokens):
+        if token not in _SHELL_SEPARATORS:
+            continue
+        if start < index:
+            yield tokens[start:index]
+        start = index + 1
+    if start < len(tokens):
+        yield tokens[start:]
+
+
+def _git_arguments(command: list[str]) -> list[str] | None:
+    index = _executable_index(command)
+    if index is None or Path(command[index]).name != "git":
+        return None
+    return command[index + 1 :]
+
+
+def _executable_index(command: list[str]) -> int | None:
+    index = 0
+    while index < len(command):
+        while index < len(command) and _ASSIGNMENT.fullmatch(command[index]):
+            index += 1
+        if index >= len(command):
+            return None
+
+        executable = Path(command[index]).name
+        if executable in _COMMAND_WRAPPERS:
+            index = _skip_options(command, index + 1, options_with_values=set())
+            continue
+        if executable == "env":
+            index = _skip_options(command, index + 1, options_with_values=_ENV_OPTIONS_WITH_VALUES)
+            continue
+        if executable == "sudo":
+            index = _skip_options(command, index + 1, options_with_values=_SUDO_OPTIONS_WITH_VALUES)
+            continue
+        return index
+    return None
+
+
+def _skip_options(command: list[str], index: int, *, options_with_values: set[str]) -> int:
+    while index < len(command):
+        word = command[index]
+        if word == "--":
+            return index + 1
+        option = word.split("=", 1)[0]
+        if option in options_with_values and "=" not in word:
+            index += 2
+            continue
+        if word.startswith("-"):
+            index += 1
+            continue
+        return index
+    return index
 
 
 def _git_worktree_action(tokens: list[str], index: int) -> WorktreeAction | None:
     while index < len(tokens):
         word = tokens[index]
-        if word in _SHELL_SEPARATORS:
-            return None
         if word == "worktree":
             return _worktree_subcommand(tokens, index + 1)
         if word in _GIT_OPTIONS_WITH_VALUES:

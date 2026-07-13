@@ -4,8 +4,18 @@ import hashlib
 import re
 import socket
 from pathlib import Path
+from typing import assert_never
 
-from new_feature.config import EnvSpec, ProjectConfig
+from new_feature.config import (
+    EnvSpec,
+    IntegerEnvSpec,
+    LiteralEnvSpec,
+    NameEnvSpec,
+    PathEnvSpec,
+    PortEnvSpec,
+    ProjectConfig,
+    SlugEnvSpec,
+)
 from new_feature.errors import NewFeatureError
 from new_feature.manifest import Manifest
 
@@ -33,50 +43,48 @@ def allocate_env(
 
 
 def _allocate_value(key: str, spec: EnvSpec, manifest: Manifest, slug: str, repo_root: Path) -> str:
-    if spec.value is not None:
-        return spec.value
-    reserved = {record.env[key] for record in manifest.features.values() if key in record.env}
-    match spec.allocate:
-        case "port":
+    match spec:
+        case LiteralEnvSpec(value=value):
+            return value
+        case PortEnvSpec():
+            reserved = _reserved_values(key, manifest)
             return _allocate_port(key, spec, reserved)
-        case "integer":
+        case IntegerEnvSpec():
+            reserved = _reserved_values(key, manifest)
             return _allocate_integer(key, spec, reserved)
-        case "name":
+        case NameEnvSpec():
             return _allocate_name(key, spec, slug, repo_root)
-        case "slug":
-            prefix = _safe_token(spec.prefix or key.lower(), separator="-")
+        case SlugEnvSpec(prefix=raw_prefix):
+            prefix = _safe_token(raw_prefix, separator="-")
             return f"{prefix}-{slug}" if prefix else slug
-        case "path":
-            base = spec.base or ".new-feature"
+        case PathEnvSpec(base=base):
             return str(Path(base) / slug)
-        case None:
-            raise NewFeatureError(f"env spec {key} must set value or allocate")
-        case other:
-            raise NewFeatureError(f"unsupported allocator for {key}: {other}")
+        case _ as unreachable:  # pragma: no cover - EnvSpec is a closed union
+            assert_never(unreachable)
 
 
-def _allocate_port(key: str, spec: EnvSpec, reserved: set[str]) -> str:
-    minimum = spec.minimum if spec.minimum is not None else 1024
-    maximum = spec.maximum if spec.maximum is not None else 65535
-    for port in range(minimum, maximum + 1):
+def _reserved_values(key: str, manifest: Manifest) -> set[str]:
+    return {record.env[key] for record in manifest.features.values() if key in record.env}
+
+
+def _allocate_port(key: str, spec: PortEnvSpec, reserved: set[str]) -> str:
+    for port in range(spec.minimum, spec.maximum + 1):
         if str(port) in reserved:
             continue
         if _port_available(port):
             return str(port)
-    raise NewFeatureError(f"no available port for {key} in range {minimum}-{maximum}")
+    raise NewFeatureError(f"no available port for {key} in range {spec.minimum}-{spec.maximum}")
 
 
-def _allocate_integer(key: str, spec: EnvSpec, reserved: set[str]) -> str:
-    minimum = spec.minimum if spec.minimum is not None else 0
-    maximum = spec.maximum if spec.maximum is not None else 65535
-    for value in range(minimum, maximum + 1):
+def _allocate_integer(key: str, spec: IntegerEnvSpec, reserved: set[str]) -> str:
+    for value in range(spec.minimum, spec.maximum + 1):
         if str(value) not in reserved:
             return str(value)
-    raise NewFeatureError(f"no available integer for {key} in range {minimum}-{maximum}")
+    raise NewFeatureError(f"no available integer for {key} in range {spec.minimum}-{spec.maximum}")
 
 
-def _allocate_name(key: str, spec: EnvSpec, slug: str, repo_root: Path) -> str:
-    prefix = _safe_token(spec.prefix or key.lower(), separator="_")
+def _allocate_name(key: str, spec: NameEnvSpec, slug: str, repo_root: Path) -> str:
+    prefix = _safe_token(spec.prefix, separator="_")
     body = _safe_token(slug, separator="_")
     digest = hashlib.sha256(f"{repo_root}:{slug}:{key}".encode()).hexdigest()[:8]
     value = f"{prefix}_{body}_{digest}" if prefix else f"{body}_{digest}"

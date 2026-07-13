@@ -9,7 +9,16 @@ import pytest
 
 from new_feature.allocator import allocate_env
 from new_feature.cli import main, parse_args
-from new_feature.config import EnvSpec, ProjectConfig, load_project_config
+from new_feature.config import (
+    IntegerEnvSpec,
+    LiteralEnvSpec,
+    NameEnvSpec,
+    PathEnvSpec,
+    PortEnvSpec,
+    ProjectConfig,
+    SlugEnvSpec,
+    load_project_config,
+)
 from new_feature.errors import NewFeatureError
 from new_feature.git import (
     abort_merge,
@@ -47,10 +56,10 @@ def test_main_reports_non_git_directory(tmp_path: Path, monkeypatch: pytest.Monk
 def test_allocator_supports_literals_integer_slug_and_default_path(tmp_path: Path) -> None:
     config = ProjectConfig(
         env={
-            "STATIC": EnvSpec(value="development"),
-            "NUMBER": EnvSpec(allocate="integer", minimum=2, maximum=3),
-            "NAMESPACE": EnvSpec(allocate="slug", prefix="demo app"),
-            "CACHE_DIR": EnvSpec(allocate="path"),
+            "STATIC": LiteralEnvSpec(value="development"),
+            "NUMBER": IntegerEnvSpec(minimum=2, maximum=3),
+            "NAMESPACE": SlugEnvSpec(prefix="demo app"),
+            "CACHE_DIR": PathEnvSpec(),
         }
     )
     manifest = Manifest(
@@ -87,8 +96,8 @@ def test_allocator_supports_literals_integer_slug_and_default_path(tmp_path: Pat
 def test_allocator_supports_slug_without_prefix_and_custom_path(tmp_path: Path) -> None:
     config = ProjectConfig(
         env={
-            "SLUG": EnvSpec(allocate="slug", prefix="!!!"),
-            "CACHE_DIR": EnvSpec(allocate="path", base="tmp/cache"),
+            "SLUG": SlugEnvSpec(prefix="!!!"),
+            "CACHE_DIR": PathEnvSpec(base="tmp/cache"),
         }
     )
 
@@ -124,7 +133,7 @@ def test_allocator_reports_exhausted_integer_and_port_ranges(tmp_path: Path) -> 
 
     with pytest.raises(NewFeatureError, match="no available integer"):
         allocate_env(
-            config=ProjectConfig(env={"NUMBER": EnvSpec(allocate="integer", minimum=1, maximum=1)}),
+            config=ProjectConfig(env={"NUMBER": IntegerEnvSpec(minimum=1, maximum=1)}),
             manifest=manifest,
             name="my-feature",
             slug="my-feature",
@@ -135,7 +144,7 @@ def test_allocator_reports_exhausted_integer_and_port_ranges(tmp_path: Path) -> 
 
     with pytest.raises(NewFeatureError, match="no available port"):
         allocate_env(
-            config=ProjectConfig(env={"WEB_PORT": EnvSpec(allocate="port", minimum=3000, maximum=3000)}),
+            config=ProjectConfig(env={"WEB_PORT": PortEnvSpec(minimum=3000, maximum=3000)}),
             manifest=manifest,
             name="my-feature",
             slug="my-feature",
@@ -145,26 +154,9 @@ def test_allocator_reports_exhausted_integer_and_port_ranges(tmp_path: Path) -> 
         )
 
 
-def test_allocator_reports_missing_and_unknown_allocator(tmp_path: Path) -> None:
-    kwargs = {
-        "manifest": Manifest(),
-        "name": "my-feature",
-        "slug": "my-feature",
-        "branch": "feature/my-feature",
-        "worktree": tmp_path / ".worktrees" / "my-feature",
-        "repo_root": tmp_path,
-    }
-
-    with pytest.raises(NewFeatureError, match="must set value or allocate"):
-        allocate_env(config=ProjectConfig(env={"BAD": EnvSpec()}), **kwargs)
-
-    with pytest.raises(NewFeatureError, match="unsupported allocator"):
-        allocate_env(config=ProjectConfig(env={"BAD": EnvSpec(allocate="mystery")}), **kwargs)
-
-
 def test_allocator_truncates_long_names(tmp_path: Path) -> None:
     env = allocate_env(
-        config=ProjectConfig(env={"DATABASE_NAME": EnvSpec(allocate="name", prefix="demo", max_length=16)}),
+        config=ProjectConfig(env={"DATABASE_NAME": NameEnvSpec(prefix="demo", max_length=16)}),
         manifest=Manifest(),
         name="my-feature",
         slug="my-very-long-feature-name",
