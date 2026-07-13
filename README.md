@@ -1,6 +1,6 @@
 # new-feature
 
-`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and launches an interactive Codex session in the new worktree.
+`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and launches the configured coding agent in the new worktree.
 
 ## Install
 
@@ -25,6 +25,10 @@ uvx new-feature merge-feature my-feature
 uvx new-feature teardown my-feature
 # Teardown a worktree even if it has uncommitted work.
 uvx new-feature teardown my-feature --force
+# Inspect managed features and diagnose stale state.
+uvx new-feature list
+uvx new-feature doctor
+uvx new-feature doctor --repair
 ```
 
 ## Project Config
@@ -71,7 +75,9 @@ Supported env entries:
 
 ## Lifecycle
 
-`new-feature my-feature` creates `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches interactive Codex in the worktree. It automatically adds `.new-feature/` and `.worktrees/` to `.gitignore`.
+`new-feature my-feature` creates `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches the configured agent in the worktree. It automatically adds `.new-feature/` and `.worktrees/` to `.gitignore`. If setup fails, it runs a forced teardown so the partial worktree, branch, and manifest entry do not linger.
+
+`new-feature list` shows each managed feature and its current Git/worktree state. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift. `doctor --repair` removes only manifest entries whose worktree and branch are both already gone.
 
 `new-feature merge-feature my-feature` runs pre-merge checks in the feature worktree, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`.
 

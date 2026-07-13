@@ -31,10 +31,27 @@ def worktree_is_clean(worktree: Path) -> bool:
     return not result.stdout.strip()
 
 
+def branch_exists(root: Path, branch: str) -> bool:
+    result = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=root,
+        check=False,
+        env=_git_env(),
+    )
+    if result.returncode not in {0, 1}:
+        raise NewFeatureError(f"git command failed while checking branch: {branch}")
+    return result.returncode == 0
+
+
 def is_branch_merged(root: Path, *, branch: str, target_branch: str) -> bool:
     result = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", branch, target_branch], cwd=root, check=False
+        ["git", "merge-base", "--is-ancestor", branch, target_branch],
+        cwd=root,
+        check=False,
+        env=_git_env(),
     )
+    if result.returncode not in {0, 1}:
+        raise NewFeatureError(f"git command failed while comparing {branch} with {target_branch}")
     return result.returncode == 0
 
 

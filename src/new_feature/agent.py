@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from new_feature.config import AgentCommand
+from new_feature.errors import NewFeatureError
 
 
 def build_initial_prompt(name: str) -> str:
@@ -17,4 +18,7 @@ def build_initial_prompt(name: str) -> str:
 
 
 def launch_interactive_agent(agent: AgentCommand, worktree: Path, env: dict[str, str], prompt: str) -> int:
-    return subprocess.call([*agent, prompt], cwd=worktree, env={**os.environ, **env})
+    try:
+        return subprocess.call([*agent, prompt], cwd=worktree, env={**os.environ, **env})
+    except OSError as exc:
+        raise NewFeatureError(f"agent command failed: {exc}") from exc

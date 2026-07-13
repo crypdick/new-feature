@@ -9,9 +9,12 @@ from pathlib import Path
 import tomli_w
 from filelock import FileLock
 
+from new_feature.errors import NewFeatureError
+
 MANIFEST_DIR = ".new-feature"
 MANIFEST_FILE = "manifest.toml"
 LOCK_FILE = "manifest.lock"
+MANIFEST_VERSION = 2
 
 
 @dataclass
@@ -24,12 +27,13 @@ class FeatureRecord:
     status: str
     created_at: str
     merged_at: str = ""
+    config_fingerprint: str = ""
     env: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class Manifest:
-    version: int = 1
+    version: int = MANIFEST_VERSION
     features: dict[str, FeatureRecord] = field(default_factory=dict)
 
 
@@ -49,7 +53,13 @@ def load_manifest(repo_root: Path) -> Manifest:
     path = manifest_path(repo_root)
     if not path.exists():
         return Manifest()
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise NewFeatureError(f"invalid feature manifest: {exc}") from exc
+    version = int(data.get("version", 1))
+    if version not in {1, MANIFEST_VERSION}:
+        raise NewFeatureError(f"unsupported manifest version: {version}")
     features: dict[str, FeatureRecord] = {}
     for key, raw in data.get("features", {}).items():
         features[key] = FeatureRecord(
@@ -61,9 +71,10 @@ def load_manifest(repo_root: Path) -> Manifest:
             status=str(raw["status"]),
             created_at=str(raw.get("created_at", "")),
             merged_at=str(raw.get("merged_at", "")),
+            config_fingerprint=str(raw.get("config_fingerprint", "")),
             env={str(env_key): str(env_value) for env_key, env_value in raw.get("env", {}).items()},
         )
-    return Manifest(version=int(data.get("version", 1)), features=features)
+    return Manifest(features=features)
 
 
 def save_manifest(repo_root: Path, manifest: Manifest) -> None:
@@ -81,6 +92,7 @@ def save_manifest(repo_root: Path, manifest: Manifest) -> None:
                 "status": record.status,
                 "created_at": record.created_at,
                 "merged_at": record.merged_at,
+                "config_fingerprint": record.config_fingerprint,
                 "env": record.env,
             }
             for key, record in sorted(manifest.features.items())
