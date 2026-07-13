@@ -98,3 +98,10 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: mkdocs
+        name: MkDocs
+        entry: uv run mkdocs build --strict
+        language: system
+        pass_filenames: false
+        always_run: true

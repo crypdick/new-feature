@@ -1,3 +1,5 @@
+"""Define reusable help text for the command-line interface."""
+
 from __future__ import annotations
 
 _CONFIGURATION_GUIDE = """\

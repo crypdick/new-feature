@@ -1,3 +1,5 @@
+"""Inspect managed feature worktrees and summarize their lifecycle state."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +11,8 @@ from new_feature.manifest import FeatureRecord
 
 @dataclass(frozen=True)
 class FeatureState:
+    """Describe a managed feature's branch, worktree, and configuration health."""
+
     worktree_exists: bool
     branch_exists: bool
     clean: bool | None
@@ -17,9 +21,11 @@ class FeatureState:
 
     @property
     def stale(self) -> bool:
+        """Return whether the feature record points to missing Git resources."""
         return not self.worktree_exists and not self.branch_exists
 
     def issues(self) -> tuple[str, ...]:
+        """Return the detected consistency problems for this feature."""
         issues: list[str] = []
         if not self.worktree_exists:
             issues.append("missing-worktree")
@@ -34,11 +40,13 @@ class FeatureState:
         return tuple(issues)
 
     def describe(self) -> str:
+        """Return a compact human-readable summary of the feature state."""
         issues = self.issues()
         return ",".join(issues) if issues else "ok"
 
 
 def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str) -> FeatureState:
+    """Inspect a feature record against the current repository and configuration."""
     worktree = root / record.worktree
     worktree_exists = worktree.is_dir()
     local_branch_exists = branch_exists(root, record.branch)

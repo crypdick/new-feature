@@ -1,3 +1,5 @@
+"""Allocate collision-free environment values for managed features."""
+
 from __future__ import annotations
 
 import hashlib
@@ -30,6 +32,7 @@ def allocate_env(
     worktree: Path,
     repo_root: Path,
 ) -> dict[str, str]:
+    """Allocate the environment exported to a feature's setup and agent processes."""
     env = {
         "NEW_FEATURE_NAME": name,
         "NEW_FEATURE_SLUG": slug,

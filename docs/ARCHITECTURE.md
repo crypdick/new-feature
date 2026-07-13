@@ -11,6 +11,8 @@
 - `main.py` is a thin local entry point that delegates to the package.
 - `tests/` contains public-behavior tests.
 - `scripts/pre_commit_hooks/` contains repository-local quality gates copied from strictify.
+- `scripts/generate_api_docs.py` generates the documentation homepage and API pages at build time.
+- `mkdocs.yml` owns the documentation-site configuration.
 - `pyproject.toml` owns package metadata and Python tool configuration.
 - `.pre-commit-config.yaml` wires the checks developers should run before commits.
 

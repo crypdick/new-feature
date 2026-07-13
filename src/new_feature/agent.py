@@ -1,3 +1,5 @@
+"""Build and launch coding-agent prompts for feature worktrees."""
+
 from __future__ import annotations
 
 import os
@@ -10,6 +12,7 @@ from new_feature.errors import NewFeatureError
 
 
 def build_initial_prompt(name: str) -> str:
+    """Return the implementation prompt for a newly created feature."""
     return (
         f"Interview the user to turn `{name}` into a concise PRD for this repository. "
         "Inspect the local repo context first. If the feature name is descriptive enough "
@@ -19,6 +22,7 @@ def build_initial_prompt(name: str) -> str:
 
 
 def build_setup_prompt() -> str:
+    """Return the repository-configuration prompt for a coding agent."""
     return (
         "Set up or improve this repository's integration with the `new-feature` tool. "
         "Start by running `new-feature --help`, then inspect the local repository and any "
@@ -37,6 +41,7 @@ def build_setup_prompt() -> str:
 
 
 def resolve_prompt(default: str, configured: str | None, override: str | None) -> str:
+    """Select an explicit prompt override, configured prompt, or default prompt."""
     # NOTE: README.md documents prompt override precedence.
     if override is not None:
         return override
@@ -46,6 +51,7 @@ def resolve_prompt(default: str, configured: str | None, override: str | None) -
 
 
 def resolve_agent(config: ProjectConfig, override: str | None) -> AgentCommand:
+    """Resolve a named or shell-form agent selection into an executable command."""
     selection = config.default_agent if override is None else override
     configured = config.agents.get(selection)
     if configured is not None:
@@ -60,6 +66,7 @@ def resolve_agent(config: ProjectConfig, override: str | None) -> AgentCommand:
 
 
 def launch_interactive_agent(agent: AgentCommand, worktree: Path, env: dict[str, str], prompt: str) -> int:
+    """Launch an agent in a worktree with its allocated environment and prompt."""
     try:
         return subprocess.call([*agent, prompt], cwd=worktree, env={**os.environ, **env})
     except OSError as exc:

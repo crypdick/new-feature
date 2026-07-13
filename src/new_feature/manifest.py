@@ -1,3 +1,5 @@
+"""Persist and parse the lifecycle state of managed features."""
+
 from __future__ import annotations
 
 import tomllib
@@ -36,6 +38,8 @@ _FEATURE_FIELDS = {
 
 @dataclass
 class FeatureRecord:
+    """Store the allocated state and lifecycle status of one managed feature."""
+
     name: str
     slug: str
     branch: str
@@ -50,16 +54,20 @@ class FeatureRecord:
 
 @dataclass
 class Manifest:
+    """Store all managed feature records for one control checkout."""
+
     version: int = MANIFEST_VERSION
     features: dict[str, FeatureRecord] = field(default_factory=dict)
 
 
 def manifest_path(repo_root: Path) -> Path:
+    """Return the path of a repository's managed-feature manifest."""
     return repo_root / MANIFEST_DIR / MANIFEST_FILE
 
 
 @contextmanager
 def manifest_lock(repo_root: Path) -> Iterator[None]:
+    """Serialize manifest reads and writes for a repository."""
     lock_path = repo_root / MANIFEST_DIR / LOCK_FILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(lock_path)):
@@ -67,6 +75,7 @@ def manifest_lock(repo_root: Path) -> Iterator[None]:
 
 
 def load_manifest(repo_root: Path) -> Manifest:
+    """Load a repository manifest, returning an empty one when none exists."""
     path = manifest_path(repo_root)
     if not path.exists():
         return Manifest()
@@ -149,6 +158,7 @@ def _string_map(value: object, *, location: str) -> dict[str, str]:
 
 
 def save_manifest(repo_root: Path, manifest: Manifest) -> None:
+    """Atomically persist a managed-feature manifest to disk."""
     path = manifest_path(repo_root)
     data = {
         "version": manifest.version,

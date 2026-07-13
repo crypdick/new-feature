@@ -1,3 +1,5 @@
+"""Install the repository-local Codex worktree guard."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,7 @@ _LEGACY_HOOK_MARKER = "require-worktree-edit.py"
 
 
 def install_codex_hook(repo_root: Path) -> Path:
+    """Install or update the Codex guard and return its configuration path."""
     """Install or update the target-branch guard in this repository."""
     hooks_path = repo_root / ".codex" / "hooks.json"
     document = _load_hooks_document(hooks_path)

@@ -14,12 +14,17 @@ current repository. The agent inspects the project, proposes a repository-specif
 configuration, asks about unresolved choices such as the optional Codex hook, and waits
 for approval before editing. Run it again to review and improve an existing integration.
 
-## Releases
+## Documentation
 
-Changing `[project].version` in `pyproject.toml` and merging that change to `main`
-publishes the distributions to PyPI, tags the merged commit as `v<VERSION>`, and creates
-a GitHub Release. Keep the project version in `uv.lock` synchronized with `pyproject.toml`.
-The release workflow can also be run manually to recover from a partial release.
+The documentation site uses this README as its homepage and generates its API reference
+from package docstrings. Build it before committing documentation changes:
+
+```bash
+uv run mkdocs build --strict
+```
+
+To preview the site locally with live reload, run `uv run mkdocs serve`. Pushing to
+`main` builds and deploys the site through GitHub Pages.
 
 ## Usage
 
@@ -41,16 +46,6 @@ new-feature list
 new-feature doctor
 new-feature doctor --repair
 ```
-
-## Codex hook
-
-Install the Codex hook in the current repository:
-
-```bash
-new-feature install-codex-hook
-```
-
-This writes `.codex/hooks.json`; Codex loads the guard only for this trusted repository.
 
 ## Project Config
 
@@ -122,3 +117,13 @@ Supported env entries:
 `new-feature merge my-feature` runs pre-merge checks in the feature worktree, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`.
 
 `new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the worktree has uncommitted changes or the branch has commits that are not in the target branch, pass `--force` to abandon them deliberately.
+
+## Codex hook
+
+Install the Codex hook in the current repository:
+
+```bash
+new-feature install-codex-hook
+```
+
+This writes `.codex/hooks.json`; Codex loads the guard only for this trusted repository.
