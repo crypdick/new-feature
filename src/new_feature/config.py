@@ -13,7 +13,6 @@ from typing import assert_never, cast
 from new_feature.errors import NewFeatureError
 
 type AgentCommand = tuple[str, ...]
-type Prompt = str
 type RawTable = dict[str, object]
 
 _CONFIG_KEYS = {
@@ -101,8 +100,8 @@ class ProjectConfig:
     target_branch: str = "main"
     default_agent: str = "codex"
     agents: dict[str, AgentCommand] = field(default_factory=_default_agents)
-    create_prompt: Prompt | None = None
-    setup_prompt: Prompt | None = None
+    create_prompt: str | None = None
+    setup_prompt: str | None = None
     push: bool = False
     setup: list[str] = field(default_factory=list)
     pre_merge: list[str] = field(default_factory=list)
@@ -114,55 +113,61 @@ class ProjectConfig:
         object.__setattr__(self, "agents", {**_default_agents(), **self.agents})
 
 
-def _string_list(raw: RawTable, name: str, *, config_path: str) -> list[str]:
-    value = raw.get(name, [])
-    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
-        raise NewFeatureError(f"{config_path}.{name} must be a list of non-empty strings")
-    return list(value)
+@dataclass(frozen=True)
+class _Parser:
+    # Binds a raw table to its config path so field readers produce accurate error prefixes.
+    raw: RawTable
+    config_path: str
 
+    def string(self, name: str, default: str) -> str:
+        value = self.raw.get(name, default)
+        if not isinstance(value, str) or not value:
+            raise NewFeatureError(f"{self.config_path}.{name} must be a non-empty string")
+        return value
 
-def _agent_command(value: object, name: str, *, config_path: str) -> AgentCommand:
-    # NOTE: README.md documents agent commands as argv prefixes.
-    if not isinstance(value, list) or not value:
-        raise NewFeatureError(f"{config_path}.agents.{name} must be a non-empty list of non-empty strings")
-    if not all(isinstance(item, str) for item in value) or not all(value):
-        raise NewFeatureError(f"{config_path}.agents.{name} must be a non-empty list of non-empty strings")
-    return tuple(value)
+    def boolean(self, name: str, *, default: bool) -> bool:
+        value = self.raw.get(name, default)
+        if not isinstance(value, bool):
+            raise NewFeatureError(f"{self.config_path}.{name} must be a boolean")
+        return value
 
+    def string_list(self, name: str) -> list[str]:
+        value = self.raw.get(name, [])
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise NewFeatureError(f"{self.config_path}.{name} must be a list of non-empty strings")
+        return list(value)
 
-def _agents(raw: RawTable, *, config_path: str) -> dict[str, AgentCommand]:
-    value = raw.get("agents", {})
-    if not isinstance(value, dict):
-        raise NewFeatureError(f"{config_path}.agents must be a table of agent commands")
-    agents = _default_agents()
-    for name, command in cast("RawTable", value).items():
-        if not name:
-            raise NewFeatureError(f"{config_path}.agents names must be non-empty strings")
-        agents[name] = _agent_command(command, name, config_path=config_path)
-    return agents
+    def optional_prompt(self, name: str) -> str | None:
+        value = self.raw.get(name)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value:
+            raise NewFeatureError(f"{self.config_path}.{name} must be a non-empty string")
+        return value
 
+    def agents(self) -> dict[str, AgentCommand]:
+        # Built-in agents are merged in by ProjectConfig.__post_init__; parse only what is declared.
+        value = self.raw.get("agents", {})
+        if not isinstance(value, dict):
+            raise NewFeatureError(f"{self.config_path}.agents must be a table of agent commands")
+        agents: dict[str, AgentCommand] = {}
+        for name, command in cast("RawTable", value).items():
+            if not name:
+                raise NewFeatureError(f"{self.config_path}.agents names must be non-empty strings")
+            agents[name] = self._agent_command(command, name)
+        return agents
 
-def _string(raw: RawTable, name: str, default: str, *, config_path: str) -> str:
-    value = raw.get(name, default)
-    if not isinstance(value, str) or not value:
-        raise NewFeatureError(f"{config_path}.{name} must be a non-empty string")
-    return value
-
-
-def _boolean(raw: RawTable, name: str, *, default: bool, config_path: str) -> bool:
-    value = raw.get(name, default)
-    if not isinstance(value, bool):
-        raise NewFeatureError(f"{config_path}.{name} must be a boolean")
-    return value
-
-
-def _optional_prompt(raw: RawTable, name: str, *, config_path: str) -> Prompt | None:
-    value = raw.get(name)
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value:
-        raise NewFeatureError(f"{config_path}.{name} must be a non-empty string")
-    return value
+    def _agent_command(self, value: object, name: str) -> AgentCommand:
+        # NOTE: README.md documents agent commands as argv prefixes.
+        if (
+            not isinstance(value, list)
+            or not value
+            or not all(isinstance(item, str) and item for item in value)
+        ):
+            raise NewFeatureError(
+                f"{self.config_path}.agents.{name} must be a non-empty list of non-empty strings"
+            )
+        return tuple(value)
 
 
 def _optional_string(raw: RawTable, name: str, *, env_key: str) -> str | None:
@@ -348,16 +353,17 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
 
     env = {key: _env_spec(key, value) for key, value in env_raw.items()}
 
+    parser = _Parser(raw, config_path)
     return ProjectConfig(
-        target_branch=_string(raw, "target_branch", "main", config_path=config_path),
-        default_agent=_string(raw, "default_agent", "codex", config_path=config_path),
-        agents=_agents(raw, config_path=config_path),
-        create_prompt=_optional_prompt(raw, "create_prompt", config_path=config_path),
-        setup_prompt=_optional_prompt(raw, "setup_prompt", config_path=config_path),
-        push=_boolean(raw, "push", default=False, config_path=config_path),
-        setup=_string_list(raw, "setup", config_path=config_path),
-        pre_merge=_string_list(raw, "pre_merge", config_path=config_path),
-        post_merge=_string_list(raw, "post_merge", config_path=config_path),
-        teardown=_string_list(raw, "teardown", config_path=config_path),
+        target_branch=parser.string("target_branch", "main"),
+        default_agent=parser.string("default_agent", "codex"),
+        agents=parser.agents(),
+        create_prompt=parser.optional_prompt("create_prompt"),
+        setup_prompt=parser.optional_prompt("setup_prompt"),
+        push=parser.boolean("push", default=False),
+        setup=parser.string_list("setup"),
+        pre_merge=parser.string_list("pre_merge"),
+        post_merge=parser.string_list("post_merge"),
+        teardown=parser.string_list("teardown"),
         env=env,
     )

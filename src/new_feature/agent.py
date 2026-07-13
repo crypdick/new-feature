@@ -7,11 +7,11 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from new_feature.config import AgentCommand, ProjectConfig, Prompt
+from new_feature.config import AgentCommand, ProjectConfig
 from new_feature.errors import NewFeatureError
 
 
-def build_initial_prompt(name: str) -> Prompt:
+def build_initial_prompt(name: str) -> str:
     """Return the implementation prompt for a newly created feature."""
     return (
         f"Interview the user to turn `{name}` into a concise PRD for this repository. "
@@ -21,7 +21,7 @@ def build_initial_prompt(name: str) -> Prompt:
     )
 
 
-def build_setup_prompt() -> Prompt:
+def build_setup_prompt() -> str:
     """Return the repository-configuration prompt for a coding agent."""
     return (
         "Set up or improve this repository's integration with the `new-feature` tool. "
@@ -40,7 +40,7 @@ def build_setup_prompt() -> Prompt:
     )
 
 
-def resolve_prompt(default: Prompt, configured: Prompt | None, override: Prompt | None) -> Prompt:
+def resolve_prompt(default: str, configured: str | None, override: str | None) -> str:
     """Select an explicit prompt override, configured prompt, or default prompt."""
     # NOTE: README.md documents prompt override precedence.
     if override is not None:
@@ -65,7 +65,7 @@ def resolve_agent(config: ProjectConfig, override: str | None) -> AgentCommand:
     return command
 
 
-def launch_interactive_agent(agent: AgentCommand, worktree: Path, env: dict[str, str], prompt: Prompt) -> int:
+def launch_interactive_agent(agent: AgentCommand, worktree: Path, env: dict[str, str], prompt: str) -> int:
     """Launch an agent in a worktree with its allocated environment and prompt."""
     try:
         return subprocess.call([*agent, prompt], cwd=worktree, env={**os.environ, **env})
