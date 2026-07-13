@@ -63,8 +63,26 @@ def is_branch_merged(root: Path, *, branch: str, target_branch: str) -> bool:
     return result.returncode == 0
 
 
+def merge_is_clean(root: Path, *, branch: str, target_branch: str) -> bool:
+    """Return whether merging a feature branch into its target would avoid conflicts."""
+    result = subprocess.run(
+        ["git", "merge-tree", "--write-tree", "--quiet", target_branch, branch],
+        cwd=root,
+        check=False,
+        env=_git_env(),
+    )
+    if result.returncode not in {0, 1}:
+        raise NewFeatureError(f"git command failed while checking merge of {branch} into {target_branch}")
+    return result.returncode == 0
+
+
 def begin_merge_without_commit(root: Path, *, branch: str, target_branch: str) -> None:
-    """Start a no-commit merge after confirming the expected target branch."""
+    """Start a conflict-free no-commit merge into the expected target branch."""
+    # NOTE: README.md's Lifecycle section documents this preflight safety guarantee.
+    if not merge_is_clean(root, branch=branch, target_branch=target_branch):
+        raise NewFeatureError(
+            "feature branch conflicts with the target branch; resolve the conflicts in the feature worktree before merging"
+        )
     _git(root, "checkout", target_branch)
     _git(root, "merge", "--no-commit", "--no-ff", branch)
 
@@ -76,7 +94,14 @@ def commit_merge(root: Path, *, name: str) -> None:
 
 def abort_merge(root: Path) -> None:
     """Abort a merge that was started but not committed."""
-    subprocess.run(["git", "merge", "--abort"], cwd=root, check=False, env=_git_env())
+    subprocess.run(
+        ["git", "merge", "--abort"],
+        cwd=root,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        env=_git_env(),
+    )
 
 
 def push_target(root: Path, *, target_branch: str) -> None:
@@ -90,7 +115,12 @@ def remove_worktree_and_branch(root: Path, *, branch: str, worktree: Path, force
     if force:
         args.append("--force")
     args.append(str(worktree))
-    _git(root, *args)
+    try:
+        _git(root, *args)
+    except NewFeatureError:
+        if worktree.exists():
+            raise
+        _git(root, "worktree", "prune")
     _git(root, "branch", "-D" if force else "-d", branch)
 
 

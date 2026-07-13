@@ -5,7 +5,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from new_feature.agent import build_initial_prompt, build_setup_prompt
 from new_feature.allocator import allocate_env
 from new_feature.cli import build_parser, main, parse_args

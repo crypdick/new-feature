@@ -299,6 +299,8 @@ def test_git_branch_checks_report_command_errors(tmp_path: Path, monkeypatch: py
         git.branch_exists(tmp_path, "feature")
     with pytest.raises(NewFeatureError, match="comparing feature"):
         git.is_branch_merged(tmp_path, branch="feature", target_branch="main")
+    with pytest.raises(NewFeatureError, match="checking merge of feature into main"):
+        git.merge_is_clean(tmp_path, branch="feature", target_branch="main")
 
 
 def test_manifest_rejects_unknown_version(tmp_path: Path) -> None:
