@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "new-feature"
+# Do not edit directly; use `uv version --bump patch` instead.
 version = "0.6.1"
 description = "Create isolated feature worktrees with allocated runtime environments."
 readme = "README.md"
