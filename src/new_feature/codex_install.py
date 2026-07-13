@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import stat
-import sys
 import tempfile
 from pathlib import Path
 from typing import cast
@@ -13,17 +11,16 @@ from new_feature.errors import NewFeatureError
 
 type JsonObject = dict[str, object]
 
-_HOOK_MARKER = "-m new_feature codex-hook"
+_HOOK_MARKERS = ("new-feature codex-hook", "-m new_feature codex-hook")
 _LEGACY_HOOK_MARKER = "require-worktree-edit.py"
 
 
-def install_codex_hook(*, codex_home: Path | None = None, executable: Path | None = None) -> Path:
-    """Install or update the target-branch guard in the user Codex hooks file."""
-    home = codex_home or _codex_home()
-    hooks_path = home / "hooks.json"
+def install_codex_hook(repo_root: Path) -> Path:
+    """Install or update the target-branch guard in this repository."""
+    hooks_path = repo_root / ".codex" / "hooks.json"
     document = _load_hooks_document(hooks_path)
     pre_tool_use = _pre_tool_use_groups(document)
-    hook = _hook_group(executable or Path(sys.executable))
+    hook = _hook_group()
 
     replacement_index = _installed_group_index(pre_tool_use)
     if replacement_index is None:
@@ -33,11 +30,6 @@ def install_codex_hook(*, codex_home: Path | None = None, executable: Path | Non
 
     _atomic_json_write(hooks_path, document)
     return hooks_path
-
-
-def _codex_home() -> Path:
-    configured = os.environ.get("CODEX_HOME")
-    return Path(configured).expanduser() if configured else Path.home() / ".codex"
 
 
 def _load_hooks_document(path: Path) -> JsonObject:
@@ -62,14 +54,13 @@ def _pre_tool_use_groups(document: JsonObject) -> list[object]:
     return groups
 
 
-def _hook_group(executable: Path) -> JsonObject:
-    command = f"{shlex.quote(str(executable))} -m new_feature codex-hook"
+def _hook_group() -> JsonObject:
     return {
         "matcher": "Bash|Edit|Write|apply_patch",
         "hooks": [
             {
                 "type": "command",
-                "command": command,
+                "command": "new-feature codex-hook",
                 "timeout": 10,
                 "statusMessage": "Checking new-feature repository guard",
             }
@@ -91,7 +82,9 @@ def _installed_group_index(groups: list[object]) -> int | None:
 
 
 def _is_guard_command(command: object) -> bool:
-    return isinstance(command, str) and (_HOOK_MARKER in command or _LEGACY_HOOK_MARKER in command)
+    return isinstance(command, str) and (
+        any(marker in command for marker in _HOOK_MARKERS) or _LEGACY_HOOK_MARKER in command
+    )
 
 
 def _atomic_json_write(path: Path, document: JsonObject) -> None:
