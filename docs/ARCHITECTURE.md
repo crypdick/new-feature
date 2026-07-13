@@ -6,8 +6,9 @@
 
 - `src/new_feature/` contains importable application code.
 - `src/new_feature/app.py` owns the current executable behavior.
-- `src/new_feature/codex_hook.py` owns the Codex `PreToolUse` target-branch policy.
-- `src/new_feature/codex_install.py` merges that policy into the current repository's Codex hook configuration.
+- `src/new_feature/hook_policy.py` owns the provider-neutral managed-worktree policy.
+- `src/new_feature/codex_hook.py` adapts Codex `PreToolUse` payloads to that policy.
+- `src/new_feature/codex_install.py` merges the Codex adapter into the current repository's hook configuration.
 - `main.py` is a thin local entry point that delegates to the package.
 - `tests/` contains public-behavior tests.
 - `scripts/pre_commit_hooks/` contains repository-local quality gates copied from strictify.

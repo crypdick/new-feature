@@ -9,7 +9,7 @@ import pytest
 
 from new_feature import cli
 from new_feature import atomic_file as atomic_file_module
-from new_feature import codex_hook as codex_hook_module
+from new_feature import hook_policy as hook_policy_module
 from new_feature.codex_hook import run_codex_hook
 from new_feature.codex_install import install_codex_hook
 from new_feature.errors import NewFeatureError
@@ -199,7 +199,7 @@ def test_hook_fails_open_outside_git_and_for_invalid_project_config(tmp_path: Pa
 
 def test_hook_fails_open_when_git_cannot_start(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        codex_hook_module.subprocess,
+        hook_policy_module.subprocess,
         "run",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("missing git")),
     )

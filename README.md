@@ -126,4 +126,6 @@ Install the Codex hook in the current repository:
 new-feature install-codex-hook
 ```
 
-This writes `.codex/hooks.json`; Codex loads the guard only for this trusted repository.
+This writes `.codex/hooks.json`; Codex loads the guard only for this trusted repository. The guard
+protects the configured target branch from direct agent edits and requires Git worktree creation and
+removal to go through the managed `new-feature` lifecycle.
