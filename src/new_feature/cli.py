@@ -36,7 +36,6 @@ _COMMANDS = {
     "list",
     "doctor",
     "install-codex-hook",
-    "codex-hook",
 }
 
 
@@ -74,8 +73,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     install_hook.set_defaults(command="install-codex-hook")
 
-    codex_hook = subparsers.add_parser("codex-hook", help=argparse.SUPPRESS)
-    codex_hook.set_defaults(command="codex-hook")
     return parser
 
 
@@ -90,7 +87,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(sys.argv[1:] if argv is None else argv)
+    raw_argv = sys.argv[1:] if argv is None else argv
+    if raw_argv == ["codex-hook"]:
+        return run_codex_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
+    args = parse_args(raw_argv)
     try:
         return _run(args)
     except NewFeatureError as exc:
@@ -99,8 +99,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    if args.command == "codex-hook":
-        return run_codex_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
     if args.command == "install-codex-hook":
         path = install_codex_hook()
         print(f"Installed Codex target-branch guard in {path}")
