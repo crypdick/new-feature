@@ -27,19 +27,19 @@ The release workflow can also be run manually to recover from a partial release.
 # Ask an agent to configure or improve new-feature for this repository.
 new-feature setup
 # Create a feature worktree and launch the configured agent.
-uvx new-feature my-feature
+new-feature my-feature
 # Create a feature worktree without launching another agent.
-uvx new-feature my-feature --no-agent
+new-feature my-feature --no-agent
 # Merges the worktree into the main branch
-uvx new-feature merge my-feature
+new-feature merge my-feature
 # Run configured teardown and remove the feature worktree.
-uvx new-feature teardown my-feature
+new-feature teardown my-feature
 # Teardown a worktree even if it has uncommitted work.
-uvx new-feature teardown my-feature --force
+new-feature teardown my-feature --force
 # Inspect managed features and diagnose stale state.
-uvx new-feature list
-uvx new-feature doctor
-uvx new-feature doctor --repair
+new-feature list
+new-feature doctor
+new-feature doctor --repair
 ```
 
 ## Codex hook
