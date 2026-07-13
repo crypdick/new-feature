@@ -304,6 +304,33 @@ def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.Mo
     assert output.read_text(encoding="utf-8").startswith("my-feature|--prompt|Interview the user")
 
 
+def test_setup_launches_configured_agent_in_current_repo_without_lifecycle_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.conftest import init_git_repo
+
+    agent = tmp_path / "setup-agent.py"
+    agent.write_text(
+        'from pathlib import Path\nimport sys\nPath("setup-agent-ran.txt").write_text("|".join(sys.argv[1:]))\n',
+        encoding="utf-8",
+    )
+    wrapper = tmp_path / "setup-agent"
+    wrapper.write_text(f'#!/bin/sh\nexec {sys.executable} {agent} "$@"\n', encoding="utf-8")
+    wrapper.chmod(0o755)
+    init_git_repo(
+        tmp_path,
+        f'[project]\nname = "demo"\n\n[tool.new-feature]\nagent = ["{wrapper}", "--prompt"]\n',
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["setup"]) == 0
+    output = (tmp_path / "setup-agent-ran.txt").read_text(encoding="utf-8")
+    assert output.startswith("--prompt|Set up or improve this repository")
+    assert not (tmp_path / ".new-feature").exists()
+    assert not (tmp_path / ".worktrees").exists()
+    assert not (tmp_path / ".gitignore").exists()
+
+
 def test_merge_rejects_dirty_worktree_and_aborts_failed_post_merge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

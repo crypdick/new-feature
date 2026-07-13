@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-from new_feature.agent import build_initial_prompt, launch_interactive_agent
+from new_feature.agent import build_initial_prompt, build_setup_prompt, launch_interactive_agent
 from new_feature.allocator import allocate_env
 from new_feature.codex_hook import TextStream, run_codex_hook
 from new_feature.codex_install import install_codex_hook
@@ -33,6 +33,7 @@ from new_feature.help_text import (
     INSTALL_CODEX_HOOK_DESCRIPTION,
     LIST_DESCRIPTION,
     MERGE_DESCRIPTION,
+    SETUP_DESCRIPTION,
     TEARDOWN_DESCRIPTION,
     TOP_LEVEL_EPILOG,
 )
@@ -41,6 +42,7 @@ from new_feature.slug import feature_key, slugify
 
 _COMMANDS = {
     "create",
+    "setup",
     "merge",
     "teardown",
     "list",
@@ -77,6 +79,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="print allocated environment values without modifying the repository",
     )
     create.set_defaults(command="create")
+
+    setup = subparsers.add_parser(
+        "setup",
+        help="launch an agent to configure new-feature for this repository",
+        description=SETUP_DESCRIPTION,
+        epilog="Example:\n  new-feature setup",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    setup.set_defaults(command="setup")
 
     merge = subparsers.add_parser(
         "merge",
@@ -178,6 +189,8 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _dispatch(args: argparse.Namespace, root: Path) -> int:
+    if args.command == "setup":
+        return _setup(root)
     if args.command == "create":
         return _create(root, args.name, no_agent=args.no_agent, dry_run=args.dry_run)
     if args.command == "merge":
@@ -189,6 +202,11 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "doctor":
         return _doctor(root, repair=args.repair)
     raise NewFeatureError(f"unknown command: {args.command}")
+
+
+def _setup(root: Path) -> int:
+    config = load_project_config(root)
+    return launch_interactive_agent(config.agent, root, {}, build_setup_prompt())
 
 
 def _create(root: Path, name: str, *, no_agent: bool, dry_run: bool) -> int:

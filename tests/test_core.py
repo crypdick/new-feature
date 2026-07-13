@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from new_feature.agent import build_initial_prompt
+from new_feature.agent import build_initial_prompt, build_setup_prompt
 from new_feature.allocator import allocate_env
 from new_feature.cli import build_parser, main, parse_args
 from new_feature.commands import run_commands
@@ -29,6 +29,11 @@ def test_parser_accepts_merge_command():
     args = parse_args(["merge", "my-feature"])
     assert args.command == "merge"
     assert args.name == "my-feature"
+
+
+def test_parser_accepts_setup_command():
+    args = parse_args(["setup"])
+    assert args.command == "setup"
 
 
 def test_parser_rejects_removed_merge_feature_command():
@@ -57,6 +62,7 @@ def test_top_level_help_explains_agent_workflow():
     assert "Run lifecycle commands from the control checkout" in help_text
     assert "merge" in help_text
     assert "teardown" in help_text
+    assert "setup" in help_text
     assert "install-codex-hook" in help_text
 
 
@@ -64,6 +70,7 @@ def test_top_level_help_explains_agent_workflow():
     ("command", "expected"),
     [
         ("create", 'agent = ["copilot", "--prompt"]'),
+        ("setup", "only launches the agent"),
         ("merge", "Run this command from the control checkout"),
         ("teardown", "from the control checkout, not from the feature worktree"),
         ("list", "owns .new-feature/manifest.toml"),
@@ -81,6 +88,17 @@ def test_subcommand_help_explains_effects_and_safety(command: str, expected: str
 
 def test_slugify_normalizes_descriptive_name():
     assert slugify("Add Billing Webhooks") == "add-billing-webhooks"
+
+
+def test_setup_prompt_requires_inspection_approval_and_optional_hook_choice():
+    prompt = build_setup_prompt()
+
+    assert "Start by running `new-feature --help`" in prompt
+    assert "existing `[tool.new-feature]` configuration" in prompt
+    assert "Present a concise proposed plan" in prompt
+    assert "Do not edit files or install the hook until the user approves" in prompt
+    assert "optional repository-local Codex hook" in prompt
+    assert "improving existing configuration when present" in prompt
 
 
 def test_slugify_rejects_empty_name():
