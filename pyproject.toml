@@ -45,6 +45,16 @@ include = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/new_feature"]
 
+[tool.new-feature]
+target_branch = "main"
+branch_prefix = "feature/"
+agent = ["codex"]
+push = false
+setup = ["uv sync"]
+pre_merge = ["uv run pre-commit run --all-files"]
+post_merge = ["uv run pre-commit run --all-files"]
+teardown = []
+
 [dependency-groups]
 dev = [
     "coverage>=7.15.0",
