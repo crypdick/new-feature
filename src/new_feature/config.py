@@ -15,7 +15,8 @@ type RawTable = dict[str, object]
 
 _CONFIG_KEYS = {
     "target_branch",
-    "agent",
+    "default_agent",
+    "agents",
     "push",
     "setup",
     "pre_merge",
@@ -33,6 +34,11 @@ _ALLOCATOR_KEYS = {
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _NEW_FEATURE_TOML = "new-feature.toml"
 _PYPROJECT_TOML = "pyproject.toml"
+
+
+def _default_agents() -> dict[str, AgentCommand]:
+    # NOTE: README.md documents the built-in agent names.
+    return {"codex": ("codex",), "claude": ("claude",)}
 
 
 @dataclass(frozen=True)
@@ -74,13 +80,17 @@ type EnvSpec = LiteralEnvSpec | PortEnvSpec | IntegerEnvSpec | NameEnvSpec | Slu
 @dataclass(frozen=True)
 class ProjectConfig:
     target_branch: str = "main"
-    agent: AgentCommand = ("codex",)
+    default_agent: str = "codex"
+    agents: dict[str, AgentCommand] = field(default_factory=_default_agents)
     push: bool = False
     setup: list[str] = field(default_factory=list)
     pre_merge: list[str] = field(default_factory=list)
     post_merge: list[str] = field(default_factory=list)
     teardown: list[str] = field(default_factory=list)
     env: dict[str, EnvSpec] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "agents", {**_default_agents(), **self.agents})
 
 
 def _string_list(raw: RawTable, name: str, *, config_path: str) -> list[str]:
@@ -90,14 +100,25 @@ def _string_list(raw: RawTable, name: str, *, config_path: str) -> list[str]:
     return list(value)
 
 
-def _agent_command(raw: RawTable, *, config_path: str) -> AgentCommand:
-    # NOTE: README.md documents this value as an argv prefix.
-    value = raw.get("agent", ["codex"])
+def _agent_command(value: object, name: str, *, config_path: str) -> AgentCommand:
+    # NOTE: README.md documents agent commands as argv prefixes.
     if not isinstance(value, list) or not value:
-        raise NewFeatureError(f"{config_path}.agent must be a non-empty list of non-empty strings")
+        raise NewFeatureError(f"{config_path}.agents.{name} must be a non-empty list of non-empty strings")
     if not all(isinstance(item, str) for item in value) or not all(value):
-        raise NewFeatureError(f"{config_path}.agent must be a non-empty list of non-empty strings")
+        raise NewFeatureError(f"{config_path}.agents.{name} must be a non-empty list of non-empty strings")
     return tuple(value)
+
+
+def _agents(raw: RawTable, *, config_path: str) -> dict[str, AgentCommand]:
+    value = raw.get("agents", {})
+    if not isinstance(value, dict):
+        raise NewFeatureError(f"{config_path}.agents must be a table of agent commands")
+    agents = _default_agents()
+    for name, command in cast("RawTable", value).items():
+        if not name:
+            raise NewFeatureError(f"{config_path}.agents names must be non-empty strings")
+        agents[name] = _agent_command(command, name, config_path=config_path)
+    return agents
 
 
 def _string(raw: RawTable, name: str, default: str, *, config_path: str) -> str:
@@ -215,7 +236,8 @@ def _bounds(
 def config_fingerprint(config: ProjectConfig) -> str:
     payload = {
         "target_branch": config.target_branch,
-        "agent": config.agent,
+        "default_agent": config.default_agent,
+        "agents": config.agents,
         "push": config.push,
         "setup": config.setup,
         "pre_merge": config.pre_merge,
@@ -294,7 +316,8 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
 
     return ProjectConfig(
         target_branch=_string(raw, "target_branch", "main", config_path=config_path),
-        agent=_agent_command(raw, config_path=config_path),
+        default_agent=_string(raw, "default_agent", "codex", config_path=config_path),
+        agents=_agents(raw, config_path=config_path),
         push=_boolean(raw, "push", default=False, config_path=config_path),
         setup=_string_list(raw, "setup", config_path=config_path),
         pre_merge=_string_list(raw, "pre_merge", config_path=config_path),

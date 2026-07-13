@@ -58,7 +58,8 @@ Add config to the target repo's `new-feature.toml`:
 
 ```toml
 target_branch = "main"
-agent = ["codex"]
+default_agent = "codex"
+agents = { codex = ["codex"], claude = ["claude"] }
 push = false
 setup = ["uv sync"]
 pre_merge = ["uv run pytest"]
@@ -77,13 +78,26 @@ All settings remain optional. If both `new-feature.toml` and `pyproject.toml` ex
 `pyproject.toml`, place the same settings under `[tool.new-feature]` and use
 `[tool.new-feature.env]` instead of `[env]`.
 
-`agent` is the command and arguments used to launch the coding agent. `new-feature` appends its
+`default_agent` is the configured agent name used when `--agent` is omitted. Codex and Claude are
+built in; `agents` adds or overrides named commands and fixed arguments. `new-feature` appends its
 generated feature prompt as the final argument, so agents that require a prompt flag can be configured
 directly:
 
 ```toml
-agent = ["copilot", "--prompt"]
+default_agent = "custom"
+agents = { custom = ["custom-agent", "--prompt"] }
 ```
+
+Use a configured agent for one invocation, or pass an executable command directly:
+
+```bash
+new-feature my-feature --agent claude
+new-feature my-feature --agent "fooagent --baz-flag"
+new-feature setup --agent claude
+```
+
+When the value exactly matches a key in `agents`, that configured command is used. Otherwise,
+`new-feature` parses the value as an executable command without invoking a shell.
 
 `setup` runs after worktree creation; `teardown` runs before worktree removal.
 

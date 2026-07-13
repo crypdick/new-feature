@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "new-feature"
 # Do not edit directly; use `uv version --bump patch` instead.
-version = "0.6.4"
+version = "1.0.0"
 description = "Create isolated feature worktrees with allocated runtime environments."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -48,7 +48,8 @@ packages = ["src/new_feature"]
 
 [tool.new-feature]
 target_branch = "main"
-agent = ["codex"]
+default_agent = "codex"
+agents = { codex = ["codex"], claude = ["claude"] }
 push = false
 setup = ["uv sync"]
 pre_merge = ["uv run pre-commit run --all-files"]
