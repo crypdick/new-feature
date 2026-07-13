@@ -8,7 +8,7 @@ import pytest
 
 from new_feature.agent import build_initial_prompt
 from new_feature.allocator import allocate_env
-from new_feature.cli import main, parse_args
+from new_feature.cli import build_parser, main, parse_args
 from new_feature.commands import run_commands
 from new_feature.config import EnvSpec, ProjectConfig, load_project_config
 from new_feature.errors import NewFeatureError
@@ -41,6 +41,42 @@ def test_parser_accepts_teardown_force_command():
     assert args.command == "teardown"
     assert args.name == "my-feature"
     assert args.force is True
+
+
+def test_top_level_help_explains_agent_workflow():
+    help_text = build_parser().format_help()
+
+    assert "Workflow for an already-running coding agent:" in help_text
+    assert "new-feature create NAME --no-agent" in help_text
+    assert "new-feature COMMAND --help" in help_text
+    assert "[tool.new-feature]" in help_text
+    assert 'WEB_PORT = { allocate = "port"' in help_text
+    assert "Configured commands are shell strings run sequentially" in help_text
+    assert "NEW_FEATURE_WORKTREE" in help_text
+    assert "cannot be exported into the already-running caller" in help_text
+    assert "Run lifecycle commands from the control checkout" in help_text
+    assert "merge" in help_text
+    assert "teardown" in help_text
+    assert "install-codex-hook" in help_text
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("create", 'agent = ["copilot", "--prompt"]'),
+        ("merge", "Run this command from the control checkout"),
+        ("teardown", "from the control checkout, not from the feature worktree"),
+        ("list", "owns .new-feature/manifest.toml"),
+        ("doctor", "owns .new-feature/manifest.toml"),
+        ("install-codex-hook", "Unrelated repository hooks are"),
+    ],
+)
+def test_subcommand_help_explains_effects_and_safety(command: str, expected: str, capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        parse_args([command, "--help"])
+
+    assert exc_info.value.code == 0
+    assert expected in capsys.readouterr().out
 
 
 def test_slugify_normalizes_descriptive_name():
