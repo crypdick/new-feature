@@ -31,6 +31,8 @@ _ALLOCATOR_KEYS = {
     "path": {"allocate", "base"},
 }
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_NEW_FEATURE_TOML = "new-feature.toml"
+_PYPROJECT_TOML = "pyproject.toml"
 
 
 @dataclass(frozen=True)
@@ -81,34 +83,34 @@ class ProjectConfig:
     env: dict[str, EnvSpec] = field(default_factory=dict)
 
 
-def _string_list(raw: RawTable, name: str) -> list[str]:
+def _string_list(raw: RawTable, name: str, *, config_path: str) -> list[str]:
     value = raw.get(name, [])
     if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
-        raise NewFeatureError(f"tool.new-feature.{name} must be a list of non-empty strings")
+        raise NewFeatureError(f"{config_path}.{name} must be a list of non-empty strings")
     return list(value)
 
 
-def _agent_command(raw: RawTable) -> AgentCommand:
+def _agent_command(raw: RawTable, *, config_path: str) -> AgentCommand:
     # NOTE: README.md documents this value as an argv prefix.
     value = raw.get("agent", ["codex"])
     if not isinstance(value, list) or not value:
-        raise NewFeatureError("tool.new-feature.agent must be a non-empty list of non-empty strings")
+        raise NewFeatureError(f"{config_path}.agent must be a non-empty list of non-empty strings")
     if not all(isinstance(item, str) for item in value) or not all(value):
-        raise NewFeatureError("tool.new-feature.agent must be a non-empty list of non-empty strings")
+        raise NewFeatureError(f"{config_path}.agent must be a non-empty list of non-empty strings")
     return tuple(value)
 
 
-def _string(raw: RawTable, name: str, default: str) -> str:
+def _string(raw: RawTable, name: str, default: str, *, config_path: str) -> str:
     value = raw.get(name, default)
     if not isinstance(value, str) or not value:
-        raise NewFeatureError(f"tool.new-feature.{name} must be a non-empty string")
+        raise NewFeatureError(f"{config_path}.{name} must be a non-empty string")
     return value
 
 
-def _boolean(raw: RawTable, name: str, *, default: bool) -> bool:
+def _boolean(raw: RawTable, name: str, *, default: bool, config_path: str) -> bool:
     value = raw.get(name, default)
     if not isinstance(value, bool):
-        raise NewFeatureError(f"tool.new-feature.{name} must be a boolean")
+        raise NewFeatureError(f"{config_path}.{name} must be a boolean")
     return value
 
 
@@ -244,39 +246,59 @@ def _env_fingerprint(spec: EnvSpec) -> dict[str, object]:
 
 
 def load_project_config(repo_root: Path) -> ProjectConfig:
-    pyproject = repo_root / "pyproject.toml"
+    # NOTE: README.md documents standalone-file precedence over pyproject.toml.
+    new_feature_toml = repo_root / _NEW_FEATURE_TOML
+    if new_feature_toml.exists():
+        return _parse_project_config(
+            _load_toml_document(new_feature_toml),
+            config_path=_NEW_FEATURE_TOML,
+            env_table="[env]",
+        )
+
+    pyproject = repo_root / _PYPROJECT_TOML
     if not pyproject.exists():
         return ProjectConfig()
-    try:
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as exc:
-        raise NewFeatureError(f"invalid pyproject.toml: {exc}") from exc
+    data = _load_toml_document(pyproject)
     tool_data = data.get("tool", {})
     if not isinstance(tool_data, dict):
         raise NewFeatureError("[tool] must be a TOML table")
     raw_data = tool_data.get("new-feature", {})
     if not isinstance(raw_data, dict):
         raise NewFeatureError("[tool.new-feature] must be a TOML table")
-    raw = cast("RawTable", raw_data)
+    return _parse_project_config(
+        cast("RawTable", raw_data),
+        config_path="tool.new-feature",
+        env_table="[tool.new-feature.env]",
+    )
+
+
+def _load_toml_document(path: Path) -> RawTable:
+    try:
+        return cast("RawTable", tomllib.loads(path.read_text(encoding="utf-8")))
+    except tomllib.TOMLDecodeError as exc:
+        raise NewFeatureError(f"invalid {path.name}: {exc}") from exc
+
+
+def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) -> ProjectConfig:
     unexpected = set(raw) - _CONFIG_KEYS
     if unexpected:
         names = ", ".join(sorted(unexpected))
-        raise NewFeatureError(f"unsupported tool.new-feature options: {names}")
+        raise NewFeatureError(f"unsupported {config_path} options: {names}")
 
     env_data = raw.get("env", {})
     if not isinstance(env_data, dict):
-        raise NewFeatureError("[tool.new-feature.env] must be a TOML table")
+        raise NewFeatureError(f"{env_table} must be a TOML table")
     env_raw = cast("RawTable", env_data)
 
     env = {key: _env_spec(key, value) for key, value in env_raw.items()}
 
     return ProjectConfig(
-        target_branch=_string(raw, "target_branch", "main"),
-        agent=_agent_command(raw),
-        push=_boolean(raw, "push", default=False),
-        setup=_string_list(raw, "setup"),
-        pre_merge=_string_list(raw, "pre_merge"),
-        post_merge=_string_list(raw, "post_merge"),
-        teardown=_string_list(raw, "teardown"),
+        target_branch=_string(raw, "target_branch", "main", config_path=config_path),
+        agent=_agent_command(raw, config_path=config_path),
+        push=_boolean(raw, "push", default=False, config_path=config_path),
+        setup=_string_list(raw, "setup", config_path=config_path),
+        pre_merge=_string_list(raw, "pre_merge", config_path=config_path),
+        post_merge=_string_list(raw, "post_merge", config_path=config_path),
+        teardown=_string_list(raw, "teardown", config_path=config_path),
         env=env,
     )

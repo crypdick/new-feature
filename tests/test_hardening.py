@@ -237,6 +237,21 @@ def test_config_document_errors(tmp_path: Path, config: str, message: str) -> No
         load_project_config(tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        ("not valid toml", "invalid new-feature.toml"),
+        ("target_branch = 1\n", "new-feature.toml.target_branch must be a non-empty string"),
+        ('env = "bad"\n', r"\[env\] must be a TOML table"),
+        ("mystery = true\n", "unsupported new-feature.toml options"),
+    ],
+)
+def test_standalone_config_errors(tmp_path: Path, config: str, message: str) -> None:
+    (tmp_path / "new-feature.toml").write_text(config, encoding="utf-8")
+    with pytest.raises(NewFeatureError, match=message):
+        load_project_config(tmp_path)
+
+
 def test_config_fingerprint_is_stable_and_sensitive() -> None:
     baseline = config_fingerprint(ProjectConfig())
     assert baseline == config_fingerprint(ProjectConfig())

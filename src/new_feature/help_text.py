@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 _CONFIGURATION_GUIDE = """\
-Configuration (pyproject.toml):
-  [tool.new-feature]
+Configuration (new-feature.toml, or [tool.new-feature] in pyproject.toml):
   target_branch = "main"           # branch each feature starts from and merges into
   agent = ["codex"]                 # executable and fixed arguments; prompt is appended
   push = false                      # push target_branch after a successful merge
@@ -11,7 +10,7 @@ Configuration (pyproject.toml):
   post_merge = ["uv run pytest"]    # run in the control checkout after merging
   teardown = []                     # run in the feature worktree before removal
 
-  [tool.new-feature.env]
+  [env]
   WEB_PORT = { allocate = "port", min = 3000, max = 3999 }
   WORKER_ID = { allocate = "integer", min = 1, max = 20 }
   DATABASE_NAME = { allocate = "name", prefix = "myapp", max_length = 63 }
@@ -21,6 +20,10 @@ Configuration (pyproject.toml):
 
 All settings are optional. The defaults are target_branch = "main", agent = ["codex"],
 push = false, and empty command and environment lists.
+
+If both new-feature.toml and pyproject.toml exist, new-feature.toml takes precedence.
+For pyproject.toml, place these settings under [tool.new-feature] and use
+[tool.new-feature.env] instead of [env].
 
 Configured commands are shell strings run sequentially. They receive the allocated
 environment plus NEW_FEATURE_NAME, NEW_FEATURE_SLUG, NEW_FEATURE_BRANCH,
@@ -41,7 +44,7 @@ reserved per managed feature in .new-feature/manifest.toml.
 
 _AGENT_WORKFLOW = """\
 Workflow for an already-running coding agent:
-  1. Inspect pyproject.toml and add [tool.new-feature] configuration if the project
+  1. Inspect new-feature.toml or pyproject.toml and add configuration if the project
      needs setup, checks, cleanup, a different target branch, or isolated runtime values.
   2. From the control checkout, run: new-feature create NAME --no-agent
   3. Run `new-feature list` to confirm the normalized slug and worktree path, then do
@@ -110,10 +113,10 @@ Launch the configured coding agent in the current repository to set up or improv
 new-feature integration.
 
 The agent starts by reading `new-feature --help` and inspecting the repository and any
-existing [tool.new-feature] configuration. It proposes a repository-specific plan,
-interviews you about unresolved choices, and asks whether to install the optional Codex
-hook before making changes. This command only launches the agent; it does not edit the
-repository, create a worktree, or install the hook itself.
+existing new-feature.toml or [tool.new-feature] configuration. It proposes a
+repository-specific plan, interviews you about unresolved choices, and asks whether to
+install the optional Codex hook before making changes. This command only launches the agent;
+it does not edit the repository, create a worktree, or install the hook itself.
 """
 
 INSTALL_CODEX_HOOK_DESCRIPTION = """\
@@ -135,7 +138,7 @@ Merge a managed feature into its configured target branch.
 This runs pre-merge commands in the feature worktree, requires both the feature and
 target checkouts to be clean, starts a no-commit merge, and runs post-merge commands in
 the target checkout. The merge is committed only when all checks pass. It is pushed
-only when push = true in [tool.new-feature]. A failed merge or check is aborted.
+only when push = true in the project config. A failed merge or check is aborted.
 
 Run this command from the control checkout, not from the feature worktree.
 """

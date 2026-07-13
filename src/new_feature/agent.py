@@ -21,15 +21,16 @@ def build_setup_prompt() -> str:
     return (
         "Set up or improve this repository's integration with the `new-feature` tool. "
         "Start by running `new-feature --help`, then inspect the local repository and any "
-        "existing `[tool.new-feature]` configuration. Infer the appropriate target branch, "
-        "agent command, setup and teardown commands, pre-merge and post-merge checks, and "
-        "isolated environment allocations. Present a concise proposed plan and interview "
-        "the user about only the material choices that cannot be inferred safely. Explicitly "
-        "ask whether they want to install the optional repository-local Codex hook. Do not "
-        "edit files or install the hook until the user approves the plan. After approval, "
-        "implement and verify the configuration, improving existing configuration when "
-        "present, and explain the resulting create, merge, and teardown workflow. Do not run "
-        "`new-feature setup` again from this agent session."
+        "existing `new-feature.toml` or `[tool.new-feature]` configuration. Infer the "
+        "appropriate target branch, agent command, setup and teardown commands, pre-merge "
+        "and post-merge checks, and isolated environment allocations. Present a concise "
+        "proposed plan and interview the user about only the material choices that cannot "
+        "be inferred safely. Explicitly ask whether they want to install the optional "
+        "repository-local Codex hook. Do not edit files or install the hook until the user "
+        "approves the plan. After approval, implement and verify the configuration, "
+        "improving existing configuration when present, and explain the resulting create, "
+        "merge, and teardown workflow. Do not run `new-feature setup` again from this "
+        "agent session."
     )
 
 

@@ -54,10 +54,9 @@ This writes `.codex/hooks.json`; Codex loads the guard only for this trusted rep
 
 ## Project Config
 
-Add config to the target repo's `pyproject.toml`:
+Add config to the target repo's `new-feature.toml`:
 
 ```toml
-[tool.new-feature]
 target_branch = "main"
 agent = ["codex"]
 push = false
@@ -66,19 +65,23 @@ pre_merge = ["uv run pytest"]
 post_merge = ["uv run pytest"]
 teardown = []
 
-[tool.new-feature.env]
+[env]
 WEB_PORT = { allocate = "port", min = 3000, max = 3999 }
 API_PORT = { allocate = "port", min = 4000, max = 4999 }
 DATABASE_NAME = { allocate = "name", prefix = "myapp", max_length = 63 }
 CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
 ```
 
+All settings remain optional. If both `new-feature.toml` and `pyproject.toml` exist,
+`new-feature.toml` takes precedence. For projects that prefer to keep tool configuration in
+`pyproject.toml`, place the same settings under `[tool.new-feature]` and use
+`[tool.new-feature.env]` instead of `[env]`.
+
 `agent` is the command and arguments used to launch the coding agent. `new-feature` appends its
 generated feature prompt as the final argument, so agents that require a prompt flag can be configured
 directly:
 
 ```toml
-[tool.new-feature]
 agent = ["copilot", "--prompt"]
 ```
 
