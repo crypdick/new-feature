@@ -6,15 +6,19 @@
 
 ```bash
 uv tool install new-feature
+new-feature setup
 ```
 
-Or copy and paste this into your favorite coding agent:
-
-> Run `curl -fsSL https://pypi.org/pypi/new-feature/json`, read `info.description`, and set up `new-feature` on this machine.
+`new-feature setup` launches the configured coding agent (Codex by default) in the
+current repository. The agent inspects the project, proposes a repository-specific
+configuration, asks about unresolved choices such as the optional Codex hook, and waits
+for approval before editing. Run it again to review and improve an existing integration.
 
 ## Usage
 
 ```bash
+# Ask an agent to configure or improve new-feature for this repository.
+new-feature setup
 # Create a feature worktree and launch the configured agent.
 uvx new-feature my-feature
 # Create a feature worktree without launching another agent.

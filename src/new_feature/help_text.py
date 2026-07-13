@@ -61,6 +61,7 @@ the managed-feature records. The feature worktree is for implementation work.
 
 _STATE_GUIDE = """\
 Managed state and safety:
+  - setup launches an agent in the current checkout to configure new-feature itself.
   - Codex users can run install-codex-hook to enforce the managed worktree workflow.
   - Worktrees live at .worktrees/SLUG and branches use branch_prefix + SLUG.
   - .new-feature/ and .worktrees/ are automatically added to .gitignore.
@@ -105,6 +106,17 @@ allocated environment. For an agent requiring a prompt flag, use for example:
   agent = ["copilot", "--prompt"]
 
 {_CONFIGURATION_GUIDE}"""
+
+SETUP_DESCRIPTION = """\
+Launch the configured coding agent in the current repository to set up or improve its
+new-feature integration.
+
+The agent starts by reading `new-feature --help` and inspecting the repository and any
+existing [tool.new-feature] configuration. It proposes a repository-specific plan,
+interviews you about unresolved choices, and asks whether to install the optional Codex
+hook before making changes. This command only launches the agent; it does not edit the
+repository, create a worktree, or install the hook itself.
+"""
 
 INSTALL_CODEX_HOOK_DESCRIPTION = """\
 Install or update the repository-local Codex PreToolUse guard in .codex/hooks.json.
