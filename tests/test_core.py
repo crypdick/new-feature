@@ -63,7 +63,8 @@ def test_top_level_help_explains_agent_workflow():
     assert "Workflow for an already-running coding agent:" in help_text
     assert "new-feature create NAME --no-agent" in help_text
     assert "new-feature COMMAND --help" in help_text
-    assert "new-feature.toml" in help_text
+    assert ".new-feature.toml" in help_text
+    assert "--version" in help_text
     assert "[tool.new-feature]" in help_text
     assert "create_prompt" in help_text
     assert "setup_prompt" in help_text
@@ -106,7 +107,7 @@ def test_setup_prompt_requires_inspection_approval_and_optional_hook_choice():
     prompt = build_setup_prompt()
 
     assert "Start by running `new-feature --help`" in prompt
-    assert "existing `new-feature.toml` or `[tool.new-feature]` configuration" in prompt
+    assert "existing `.new-feature.toml` or `[tool.new-feature]` configuration" in prompt
     assert "Present a concise proposed plan" in prompt
     assert "Do not edit files or install the hook until the user approves" in prompt
     assert "optional repository-local Codex hook" in prompt
@@ -138,8 +139,8 @@ def test_load_project_config_defaults(tmp_path: Path):
     assert config.env == {}
 
 
-def test_load_project_config_from_new_feature_toml(tmp_path: Path):
-    (tmp_path / "new-feature.toml").write_text(
+def test_load_project_config_from_dotfile(tmp_path: Path):
+    (tmp_path / ".new-feature.toml").write_text(
         """
 target_branch = "develop"
 create_prompt = "Start with the data model."
@@ -166,11 +167,17 @@ STATIC_ENV = { value = "development" }
     assert config.env["STATIC_ENV"].value == "development"
 
 
-def test_new_feature_toml_takes_precedence_over_pyproject(tmp_path: Path):
+def test_dotfile_takes_precedence_over_pyproject(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text("not valid toml", encoding="utf-8")
-    (tmp_path / "new-feature.toml").write_text('target_branch = "develop"\n', encoding="utf-8")
+    (tmp_path / ".new-feature.toml").write_text('target_branch = "develop"\n', encoding="utf-8")
     config = load_project_config(tmp_path)
     assert config.target_branch == "develop"
+
+
+def test_legacy_standalone_config_is_ignored(tmp_path: Path):
+    (tmp_path / "new-feature.toml").write_text('target_branch = "develop"\n', encoding="utf-8")
+
+    assert load_project_config(tmp_path) == ProjectConfig()
 
 
 def test_load_project_config_env_allocators(tmp_path: Path):

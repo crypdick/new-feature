@@ -26,7 +26,7 @@ def build_setup_prompt() -> str:
     return (
         "Set up or improve this repository's integration with the `new-feature` tool. "
         "Start by running `new-feature --help`, then inspect the local repository and any "
-        "existing `new-feature.toml` or `[tool.new-feature]` configuration. Infer the "
+        "existing `.new-feature.toml` or `[tool.new-feature]` configuration. Infer the "
         "appropriate target branch, agent command, setup and teardown commands, pre-merge "
         "and post-merge checks, and isolated environment allocations. Present a concise "
         "proposed plan and interview the user about only the material choices that cannot "

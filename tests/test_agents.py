@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,14 @@ def test_parser_accepts_agent_and_prompt_overrides() -> None:
     assert setup.prompt == "set this up"
 
 
+def test_parser_prints_installed_version(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        parse_args(["--version"])
+
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out == f"new-feature {version('new-feature')}\n"
+
+
 def test_parser_rejects_agent_override_with_no_agent() -> None:
     with pytest.raises(SystemExit):
         parse_args(["my-feature", "--no-agent", "--agent", "claude"])
@@ -34,7 +43,7 @@ def test_parser_rejects_invalid_prompt_overrides(arguments: list[str]) -> None:
 
 
 def test_load_project_config_includes_built_in_and_custom_agents(tmp_path: Path) -> None:
-    (tmp_path / "new-feature.toml").write_text(
+    (tmp_path / ".new-feature.toml").write_text(
         """
 default_agent = "claude"
 agents = { claude = ["claude", "--permission-mode", "acceptEdits"], custom = ["custom-agent"] }

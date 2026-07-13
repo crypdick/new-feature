@@ -6,6 +6,7 @@ import argparse
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 from typing import cast
 
@@ -68,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=TOP_LEVEL_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {version('new-feature')}")
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     create = subparsers.add_parser(

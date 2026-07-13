@@ -36,7 +36,7 @@ _ALLOCATOR_KEYS = {
     "path": {"allocate", "base"},
 }
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
-_NEW_FEATURE_TOML = "new-feature.toml"
+_NEW_FEATURE_TOML = ".new-feature.toml"
 _PYPROJECT_TOML = "pyproject.toml"
 
 
