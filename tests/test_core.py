@@ -10,7 +10,16 @@ from new_feature.agent import build_initial_prompt, build_setup_prompt
 from new_feature.allocator import allocate_env
 from new_feature.cli import build_parser, main, parse_args
 from new_feature.commands import run_commands
-from new_feature.config import EnvSpec, ProjectConfig, load_project_config
+from new_feature.config import (
+    IntegerEnvSpec,
+    LiteralEnvSpec,
+    NameEnvSpec,
+    PathEnvSpec,
+    PortEnvSpec,
+    ProjectConfig,
+    SlugEnvSpec,
+    load_project_config,
+)
 from new_feature.errors import NewFeatureError
 from new_feature.git import create_worktree, remove_worktree_and_branch
 from new_feature.gitignore import ensure_generated_paths_ignored
@@ -140,16 +149,24 @@ teardown = ["dropdb --if-exists $DATABASE_NAME"]
 WEB_PORT = { allocate = "port", min = 3000, max = 3999 }
 DATABASE_NAME = { allocate = "name", prefix = "demo", max_length = 63 }
 STATIC_ENV = { value = "development" }
+WORKER_ID = { allocate = "integer" }
+NAMESPACE = { allocate = "slug" }
+CACHE_DIR = { allocate = "path" }
 """,
         encoding="utf-8",
     )
     config = load_project_config(tmp_path)
     assert config.target_branch == "develop"
     assert config.setup == ["uv sync"]
-    assert config.env["WEB_PORT"].allocate == "port"
+    assert isinstance(config.env["WEB_PORT"], PortEnvSpec)
     assert config.env["WEB_PORT"].minimum == 3000
+    assert isinstance(config.env["DATABASE_NAME"], NameEnvSpec)
     assert config.env["DATABASE_NAME"].prefix == "demo"
+    assert isinstance(config.env["STATIC_ENV"], LiteralEnvSpec)
     assert config.env["STATIC_ENV"].value == "development"
+    assert config.env["WORKER_ID"] == IntegerEnvSpec()
+    assert config.env["NAMESPACE"] == SlugEnvSpec(prefix="namespace")
+    assert config.env["CACHE_DIR"] == PathEnvSpec()
 
 
 def test_ensure_generated_paths_ignored_creates_gitignore(tmp_path: Path):
@@ -201,7 +218,7 @@ def test_allocate_env_avoids_manifest_ports(tmp_path: Path):
             )
         }
     )
-    config = ProjectConfig(env={"WEB_PORT": EnvSpec(allocate="port", minimum=3000, maximum=3001)})
+    config = ProjectConfig(env={"WEB_PORT": PortEnvSpec(minimum=3000, maximum=3001)})
     env = allocate_env(
         config=config,
         manifest=manifest,
@@ -219,9 +236,7 @@ def test_allocate_env_avoids_live_port(tmp_path: Path):
     sock.bind(("127.0.0.1", 0))
     occupied = sock.getsockname()[1]
     try:
-        config = ProjectConfig(
-            env={"WEB_PORT": EnvSpec(allocate="port", minimum=occupied, maximum=occupied + 1)}
-        )
+        config = ProjectConfig(env={"WEB_PORT": PortEnvSpec(minimum=occupied, maximum=occupied + 1)})
         env = allocate_env(
             config=config,
             manifest=Manifest(),
@@ -237,7 +252,7 @@ def test_allocate_env_avoids_live_port(tmp_path: Path):
 
 
 def test_allocate_env_includes_builtin_values(tmp_path: Path):
-    config = ProjectConfig(env={"DATABASE_NAME": EnvSpec(allocate="name", prefix="demo", max_length=63)})
+    config = ProjectConfig(env={"DATABASE_NAME": NameEnvSpec(prefix="demo", max_length=63)})
     worktree = tmp_path / ".worktrees" / "my-feature"
     env = allocate_env(
         config=config,

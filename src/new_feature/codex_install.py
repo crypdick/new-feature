@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import json
-import os
-import stat
-import tempfile
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 - package-wide beartype needs annotation types at runtime
 from typing import cast
 
+from new_feature.atomic_file import atomic_text_write
 from new_feature.errors import NewFeatureError
 
 type JsonObject = dict[str, object]
@@ -22,11 +20,7 @@ def install_codex_hook(repo_root: Path) -> Path:
     pre_tool_use = _pre_tool_use_groups(document)
     hook = _hook_group()
 
-    replacement_index = _installed_group_index(pre_tool_use)
-    if replacement_index is None:
-        pre_tool_use.append(hook)
-    else:
-        pre_tool_use[replacement_index] = hook
+    _install_dedicated_group(pre_tool_use, hook)
 
     _atomic_json_write(hooks_path, document)
     return hooks_path
@@ -68,17 +62,32 @@ def _hook_group() -> JsonObject:
     }
 
 
-def _installed_group_index(groups: list[object]) -> int | None:
-    for index, group in enumerate(groups):
+def _install_dedicated_group(groups: list[object], hook: JsonObject) -> None:
+    updated: list[object] = []
+    insertion_index: int | None = None
+    for group in groups:
         if not isinstance(group, dict):
+            updated.append(group)
             continue
         handlers = group.get("hooks", [])
         if not isinstance(handlers, list):
+            updated.append(group)
             continue
-        for handler in handlers:
-            if isinstance(handler, dict) and _is_guard_command(handler.get("command")):
-                return index
-    return None
+        retained = [handler for handler in handlers if not _is_guard_handler(handler)]
+        if len(retained) == len(handlers):
+            updated.append(group)
+            continue
+        if insertion_index is None:
+            insertion_index = len(updated)
+        if retained:
+            updated.append({**group, "hooks": retained})
+
+    updated.insert(len(updated) if insertion_index is None else insertion_index, hook)
+    groups[:] = updated
+
+
+def _is_guard_handler(handler: object) -> bool:
+    return isinstance(handler, dict) and _is_guard_command(handler.get("command"))
 
 
 def _is_guard_command(command: object) -> bool:
@@ -88,22 +97,4 @@ def _is_guard_command(command: object) -> bool:
 
 
 def _atomic_json_write(path: Path, document: JsonObject) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temporary_path = Path(temporary_name)
-    try:
-        _write_json(descriptor, document)
-        temporary_path.chmod(mode)
-        temporary_path.replace(path)
-    except Exception:
-        temporary_path.unlink(missing_ok=True)
-        raise
-
-
-def _write_json(descriptor: int, document: JsonObject) -> None:
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        json.dump(document, handle, indent=2)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+    atomic_text_write(path, f"{json.dumps(document, indent=2)}\n", default_mode=0o600)

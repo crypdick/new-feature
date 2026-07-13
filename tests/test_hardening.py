@@ -6,8 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from new_feature import agent, cli, git
-from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
+from new_feature import agent, atomic_file, cli, git
+from new_feature.config import (
+    IntegerEnvSpec,
+    LiteralEnvSpec,
+    NameEnvSpec,
+    PathEnvSpec,
+    PortEnvSpec,
+    ProjectConfig,
+    SlugEnvSpec,
+    config_fingerprint,
+    load_project_config,
+)
 from new_feature.errors import NewFeatureError
 from new_feature.feature_state import FeatureState
 from new_feature.manifest import FeatureRecord, Manifest, load_manifest, save_manifest
@@ -231,6 +241,20 @@ def test_config_fingerprint_is_stable_and_sensitive() -> None:
     baseline = config_fingerprint(ProjectConfig())
     assert baseline == config_fingerprint(ProjectConfig())
     assert baseline != config_fingerprint(ProjectConfig(push=True))
+    assert config_fingerprint(ProjectConfig(env={"VALUE": PortEnvSpec()})) != config_fingerprint(
+        ProjectConfig(env={"VALUE": IntegerEnvSpec()})
+    )
+    all_allocators = ProjectConfig(
+        env={
+            "LITERAL": LiteralEnvSpec("value"),
+            "PORT": PortEnvSpec(),
+            "INTEGER": IntegerEnvSpec(),
+            "NAME": NameEnvSpec(prefix="name"),
+            "SLUG": SlugEnvSpec(prefix="slug"),
+            "PATH": PathEnvSpec(),
+        }
+    )
+    assert config_fingerprint(all_allocators) == config_fingerprint(all_allocators)
 
 
 def test_lifecycle_warns_when_config_changed(
@@ -279,6 +303,92 @@ def test_manifest_reports_invalid_toml(tmp_path: Path) -> None:
         load_manifest(tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("document", "message"),
+    [
+        ('version = "two"\n', "version must be an integer"),
+        ("features = []\n", "features must be a TOML table"),
+        (
+            '[features.demo]\nname = 1\nslug = "demo"\nbranch = "demo"\n'
+            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n',
+            "demo.name must be a non-empty string",
+        ),
+        (
+            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "paused"\n',
+            "demo.status must be active or merged",
+        ),
+        (
+            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
+            "env = { PORT = 3000 }\n",
+            "env values must be strings",
+        ),
+        (
+            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
+            "created_at = 1\n",
+            "created_at must be a string",
+        ),
+        (
+            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
+            'mystery = "value"\n',
+            "unsupported fields: mystery",
+        ),
+    ],
+)
+def test_manifest_rejects_malformed_typed_values(tmp_path: Path, document: str, message: str) -> None:
+    manifest_path = tmp_path / ".new-feature" / "manifest.toml"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(NewFeatureError, match=message):
+        load_manifest(tmp_path)
+
+
+def test_manifest_atomic_write_preserves_previous_state_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    save_manifest(tmp_path, Manifest())
+    path = tmp_path / ".new-feature" / "manifest.toml"
+    previous = path.read_text(encoding="utf-8")
+    monkeypatch.setattr(
+        atomic_file.os,
+        "fsync",
+        lambda *_args: (_ for _ in ()).throw(OSError("disk failure")),
+    )
+
+    with pytest.raises(NewFeatureError, match="cannot write feature manifest"):
+        save_manifest(
+            tmp_path,
+            Manifest(
+                features={
+                    "demo": FeatureRecord(
+                        name="demo",
+                        slug="demo",
+                        branch="demo",
+                        worktree=".worktrees/demo",
+                        target_branch="main",
+                        status="active",
+                        created_at="now",
+                    )
+                }
+            ),
+        )
+
+    assert path.read_text(encoding="utf-8") == previous
+    assert sorted(item.name for item in path.parent.iterdir()) == ["manifest.toml"]
+
+
 def test_manifest_migrates_version_one(tmp_path: Path) -> None:
     save_manifest(tmp_path, Manifest(version=1))
     assert load_manifest(tmp_path).version == 2
+
+
+def test_release_workflow_requires_quality_gate_before_build() -> None:
+    workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
+
+    assert "quality:" in workflow
+    assert "uv run pre-commit run --all-files" in workflow
+    assert "needs: [prepare, quality]" in workflow

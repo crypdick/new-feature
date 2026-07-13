@@ -10,4 +10,7 @@
 
 ## Maintenance
 
+`uv run pre-commit run --all-files` is the canonical aggregate quality gate used locally and before
+publishing a release.
+
 Keep this scorecard focused on real modules. When new domain areas appear, add rows for their coverage, type safety, complexity, and test health.
