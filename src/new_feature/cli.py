@@ -4,9 +4,12 @@ import argparse
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from new_feature.agent import build_initial_prompt, launch_interactive_agent
 from new_feature.allocator import allocate_env
+from new_feature.codex_hook import TextStream, run_codex_hook
+from new_feature.codex_install import install_codex_hook
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
 from new_feature.errors import NewFeatureError
@@ -26,7 +29,15 @@ from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.slug import feature_key, slugify
 
-_COMMANDS = {"create", "merge-feature", "teardown", "list", "doctor"}
+_COMMANDS = {
+    "create",
+    "merge-feature",
+    "teardown",
+    "list",
+    "doctor",
+    "install-codex-hook",
+    "codex-hook",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,6 +68,14 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = subparsers.add_parser("doctor", help="diagnose manifest and worktree state")
     doctor.add_argument("--repair", action="store_true")
     doctor.set_defaults(command="doctor")
+
+    install_hook = subparsers.add_parser(
+        "install-codex-hook", help="install the Codex target-branch edit guard"
+    )
+    install_hook.set_defaults(command="install-codex-hook")
+
+    codex_hook = subparsers.add_parser("codex-hook", help=argparse.SUPPRESS)
+    codex_hook.set_defaults(command="codex-hook")
     return parser
 
 
@@ -73,11 +92,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        root = repo_root(Path.cwd())
-        return _dispatch(args, root)
+        return _run(args)
     except NewFeatureError as exc:
         print(f"new-feature: {exc}", file=sys.stderr)
         return 1
+
+
+def _run(args: argparse.Namespace) -> int:
+    if args.command == "codex-hook":
+        return run_codex_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
+    if args.command == "install-codex-hook":
+        path = install_codex_hook()
+        print(f"Installed Codex target-branch guard in {path}")
+        print("Restart Codex, then review and trust the hook with /hooks.")
+        return 0
+    root = repo_root(Path.cwd())
+    return _dispatch(args, root)
 
 
 def _dispatch(args: argparse.Namespace, root: Path) -> int:
