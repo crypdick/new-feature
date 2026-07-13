@@ -171,7 +171,8 @@ command from the control checkout that owns .new-feature/manifest.toml.
 DOCTOR_DESCRIPTION = """\
 Diagnose manifest, Git branch, worktree, and project-configuration consistency.
 
-The command exits nonzero while issues remain. --repair only removes a stale manifest
-entry when both its worktree and branch are already gone; it does not discard work.
-Run this command from the control checkout that owns .new-feature/manifest.toml.
+The command exits nonzero while issues remain. --repair removes a stale manifest entry
+when both its worktree and branch are already gone. It also removes a missing worktree's
+branch only after confirming that the branch is merged; it does not discard work. Run
+this command from the control checkout that owns .new-feature/manifest.toml.
 """
