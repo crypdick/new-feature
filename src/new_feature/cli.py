@@ -383,6 +383,10 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
             raise NewFeatureError(f"unknown feature: {name}")
     _warn_if_config_changed(config, record)
     worktree = root / record.worktree
+    if not worktree.is_dir():
+        raise NewFeatureError(
+            "feature worktree is missing; run `new-feature doctor` to inspect the managed feature"
+        )
     if not force:
         if not worktree_is_clean(worktree):
             raise NewFeatureError("feature worktree has uncommitted changes; pass --force to abandon them")

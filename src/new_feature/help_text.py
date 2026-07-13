@@ -72,7 +72,7 @@ Managed state and safety:
   - Worktrees live at .worktrees/SLUG and branches are named SLUG.
   - .new-feature/ and .worktrees/ are automatically added to .gitignore.
   - Setup failure triggers forced cleanup of the partial feature.
-  - merge requires clean feature and target checkouts and aborts failed merges.
+  - merge requires clean feature and target checkouts, rejects predicted conflicts, and aborts failed merges.
   - teardown refuses to discard dirty or unmerged work unless --force is supplied.
   - list shows paths and state; doctor diagnoses stale state and configuration drift.
 """
@@ -143,9 +143,10 @@ MERGE_DESCRIPTION = """\
 Merge a managed feature into its configured target branch.
 
 This runs pre-merge commands in the feature worktree, requires both the feature and
-target checkouts to be clean, starts a no-commit merge, and runs post-merge commands in
-the target checkout. The merge is committed only when all checks pass. It is pushed
-only when push = true in the project config. A failed merge or check is aborted.
+target checkouts to be clean, and rejects a conflicting merge before changing the target
+checkout. It then starts a no-commit merge and runs post-merge commands in the target
+checkout. The merge is committed only when all checks pass. It is pushed only when
+push = true in the project config. A failed merge or check is aborted.
 
 Run this command from the control checkout, not from the feature worktree.
 """
