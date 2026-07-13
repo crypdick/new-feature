@@ -30,6 +30,13 @@ def _run(path: Path, *, cwd: Path, tool_name: str = "apply_patch") -> dict[str, 
     return json.loads(output.getvalue()) if output.getvalue() else None
 
 
+def _run_bash(command: object, *, cwd: Path, field: str = "command") -> dict[str, object] | None:
+    output = io.StringIO()
+    payload = io.StringIO(json.dumps({"tool_name": "Bash", "tool_input": {field: command}}))
+    assert run_codex_hook(payload, output, cwd=cwd) == 0
+    return json.loads(output.getvalue()) if output.getvalue() else None
+
+
 def test_hook_denies_apply_patch_on_default_target_branch(tmp_path: Path) -> None:
     from tests.conftest import init_git_repo
 
@@ -85,13 +92,69 @@ def test_hook_supports_legacy_edit_payload_and_ignores_unrelated_input(tmp_path:
     assert run_codex_hook(edit, output, cwd=tmp_path) == 0
     assert "permissionDecision" in output.getvalue()
 
-    for raw in ("not json", "[]", json.dumps({"tool_name": "Bash"})):
+    for raw in ("not json", "[]", json.dumps({"tool_name": "mcp__filesystem__read_file"})):
         output = io.StringIO()
         assert run_codex_hook(io.StringIO(raw), output, cwd=tmp_path) == 0
         assert output.getvalue() == ""
 
     malformed_edit = io.StringIO(json.dumps({"tool_name": "Write", "tool_input": []}))
     assert run_codex_hook(malformed_edit, io.StringIO(), cwd=tmp_path) == 0
+
+
+@pytest.mark.parametrize(
+    ("command", "action", "replacement"),
+    [
+        ("git worktree add .worktrees/demo -b feature/demo", "add", "new-feature <feature-name>"),
+        ("/usr/bin/git worktree remove --force .worktrees/demo", "remove", "new-feature teardown"),
+        (
+            "echo ready && git -C /repo -c advice.detachedHead=false worktree add /tmp/demo",
+            "add",
+            "new-feature <feature-name>",
+        ),
+        ("git --no-pager worktree remove /tmp/demo", "remove", "new-feature teardown"),
+    ],
+)
+def test_hook_denies_direct_worktree_add_and_remove(
+    tmp_path: Path, command: str, action: str, replacement: str
+) -> None:
+    result = _run_bash(command, cwd=tmp_path)
+
+    assert result is not None
+    hook_output = result["hookSpecificOutput"]
+    assert isinstance(hook_output, dict)
+    assert f"git worktree {action}" in hook_output["permissionDecisionReason"]
+    assert replacement in hook_output["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git worktree list",
+        "git worktree prune",
+        "git worktree repair",
+        "git worktree move old new",
+        "git help worktree add",
+        "new-feature demo --no-agent",
+        "new-feature teardown demo",
+        "echo 'git worktree add /tmp/demo'",
+        "echo git worktree add /tmp/demo",
+        "git worktree 'unterminated",
+        "git",
+        "git && echo done",
+    ],
+)
+def test_hook_allows_other_worktree_and_new_feature_commands(tmp_path: Path, command: str) -> None:
+    assert _run_bash(command, cwd=tmp_path) is None
+
+
+def test_hook_accepts_cmd_alias_and_ignores_malformed_bash_input(tmp_path: Path) -> None:
+    assert _run_bash("git worktree add /tmp/demo", cwd=tmp_path, field="cmd") is not None
+    assert _run_bash(None, cwd=tmp_path) is None
+
+    output = io.StringIO()
+    payload = io.StringIO(json.dumps({"tool_name": "Bash", "tool_input": []}))
+    assert run_codex_hook(payload, output, cwd=tmp_path) == 0
+    assert output.getvalue() == ""
 
 
 def test_hook_handles_nested_patch_input_empty_targets_and_detached_head(tmp_path: Path) -> None:
@@ -137,7 +200,7 @@ def test_installer_creates_hook_file_and_is_idempotent(tmp_path: Path) -> None:
     document = json.loads(hooks_path.read_text(encoding="utf-8"))
     groups = document["hooks"]["PreToolUse"]
     assert len(groups) == 1
-    assert groups[0]["matcher"] == "Edit|Write|apply_patch"
+    assert groups[0]["matcher"] == "Bash|Edit|Write|apply_patch"
     assert groups[0]["hooks"][0]["command"] == "/tool/python -m new_feature codex-hook"
     assert hooks_path.stat().st_mode & 0o777 == 0o600
 

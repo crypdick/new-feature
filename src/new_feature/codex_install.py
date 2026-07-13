@@ -65,13 +65,13 @@ def _pre_tool_use_groups(document: JsonObject) -> list[object]:
 def _hook_group(executable: Path) -> JsonObject:
     command = f"{shlex.quote(str(executable))} -m new_feature codex-hook"
     return {
-        "matcher": "Edit|Write|apply_patch",
+        "matcher": "Bash|Edit|Write|apply_patch",
         "hooks": [
             {
                 "type": "command",
                 "command": command,
                 "timeout": 10,
-                "statusMessage": "Checking new-feature target branch guard",
+                "statusMessage": "Checking new-feature repository guard",
             }
         ],
     }

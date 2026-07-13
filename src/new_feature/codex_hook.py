@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -12,9 +13,21 @@ from new_feature.config import load_project_config
 from new_feature.errors import NewFeatureError
 
 BranchName = NewType("BranchName", str)
+WorktreeAction = NewType("WorktreeAction", str)
 type TextStream = StringIO | TextIOWrapper
 
 _DIRECT_EDIT_TOOLS = {"Write", "Edit", "apply_patch"}
+_WORKTREE_ACTIONS = {"add", "remove"}
+_SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
+_GIT_OPTIONS_WITH_VALUES = {
+    "-C",
+    "-c",
+    "--config-env",
+    "--git-dir",
+    "--namespace",
+    "--super-prefix",
+    "--work-tree",
+}
 _PATCH_FILE_PREFIXES = (
     "*** Add File: ",
     "*** Update File: ",
@@ -39,10 +52,15 @@ def run_codex_hook(stdin: TextStream, stdout: TextStream, *, cwd: Path) -> int:
         return 0
 
     tool_name = payload.get("tool_name", "")
+    tool_input = payload.get("tool_input", {})
+    if tool_name == "Bash":
+        action = _worktree_action(tool_input)
+        if action is not None:
+            _deny(stdout, _worktree_denial_reason(action))
+        return 0
     if tool_name not in _DIRECT_EDIT_TOOLS:
         return 0
 
-    tool_input = payload.get("tool_input", {})
     for target in _direct_edit_targets(cast("str", tool_name), tool_input, cwd=cwd):
         try:
             context = _git_context_for(target, cwd=cwd)
@@ -52,6 +70,53 @@ def run_codex_hook(stdin: TextStream, stdout: TextStream, *, cwd: Path) -> int:
             _deny(stdout, _denial_reason(context))
             return 0
     return 0
+
+
+def _worktree_action(tool_input: object) -> WorktreeAction | None:
+    if not isinstance(tool_input, dict):
+        return None
+    raw_command = tool_input.get("command", tool_input.get("cmd"))
+    if not isinstance(raw_command, str):
+        return None
+    try:
+        lexer = shlex.shlex(raw_command, posix=True, punctuation_chars=";&|()")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    for index, word in enumerate(tokens):
+        if Path(word).name == "git" and _starts_shell_command(tokens, index):
+            action = _git_worktree_action(tokens, index + 1)
+            if action is not None:
+                return action
+    return None
+
+
+def _starts_shell_command(tokens: list[str], index: int) -> bool:
+    return index == 0 or tokens[index - 1] in _SHELL_SEPARATORS
+
+
+def _git_worktree_action(tokens: list[str], index: int) -> WorktreeAction | None:
+    while index < len(tokens):
+        word = tokens[index]
+        if word in _SHELL_SEPARATORS:
+            return None
+        if word == "worktree":
+            return _worktree_subcommand(tokens, index + 1)
+        if word in _GIT_OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        if word.startswith("-"):
+            index += 1
+            continue
+        return None
+    return None
+
+
+def _worktree_subcommand(tokens: list[str], index: int) -> WorktreeAction | None:
+    if index < len(tokens) and tokens[index] in _WORKTREE_ACTIONS:
+        return WorktreeAction(tokens[index])
+    return None
 
 
 def _direct_edit_targets(tool_name: str, tool_input: object, *, cwd: Path) -> list[Path]:
@@ -147,6 +212,19 @@ def _denial_reason(context: GitContext) -> str:
         f"target branch '{context.target_branch}' at {context.root}. Run "
         "`new-feature <feature-name> --no-agent`, then continue the work from "
         "`.worktrees/<feature-name>`."
+    )
+
+
+def _worktree_denial_reason(action: WorktreeAction) -> str:
+    # NOTE: README.md documents that Codex must manage feature worktrees through this CLI.
+    replacement = (
+        "`new-feature <feature-name> --no-agent`"
+        if action == "add"
+        else "`new-feature teardown <feature-name>`"
+    )
+    return (
+        f"BLOCKED [new-feature-worktree-{action}]: Direct `git worktree {action}` is disabled. "
+        f"Use {replacement} instead."
     )
 
 
