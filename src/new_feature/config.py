@@ -15,7 +15,6 @@ type RawTable = dict[str, object]
 
 _CONFIG_KEYS = {
     "target_branch",
-    "branch_prefix",
     "agent",
     "push",
     "setup",
@@ -48,7 +47,6 @@ class EnvSpec:
 @dataclass(frozen=True)
 class ProjectConfig:
     target_branch: str = "main"
-    branch_prefix: str = "feature/"
     agent: AgentCommand = ("codex",)
     push: bool = False
     setup: list[str] = field(default_factory=list)
@@ -166,7 +164,6 @@ def _allocated_env_spec(key: str, raw: RawTable) -> EnvSpec:
 def config_fingerprint(config: ProjectConfig) -> str:
     payload = {
         "target_branch": config.target_branch,
-        "branch_prefix": config.branch_prefix,
         "agent": config.agent,
         "push": config.push,
         "setup": config.setup,
@@ -208,7 +205,6 @@ def load_project_config(repo_root: Path) -> ProjectConfig:
 
     return ProjectConfig(
         target_branch=_string(raw, "target_branch", "main"),
-        branch_prefix=_string(raw, "branch_prefix", "feature/"),
         agent=_agent_command(raw),
         push=_boolean(raw, "push", default=False),
         setup=_string_list(raw, "setup"),

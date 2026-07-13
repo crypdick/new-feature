@@ -277,7 +277,7 @@ def test_create_dry_run_and_duplicate_detection(
     monkeypatch.chdir(tmp_path)
 
     assert main(["my-feature", "--dry-run"]) == 0
-    assert "NEW_FEATURE_BRANCH=feature/my-feature" in capsys.readouterr().out
+    assert "NEW_FEATURE_BRANCH=my-feature" in capsys.readouterr().out
     assert main(["my-feature", "--no-agent"]) == 0
     assert main(["my-feature", "--no-agent"]) == 1
 

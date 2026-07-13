@@ -114,7 +114,6 @@ def test_load_project_config_defaults(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
     config = load_project_config(tmp_path)
     assert config.target_branch == "main"
-    assert config.branch_prefix == "feature/"
     assert config.agent == ("codex",)
     assert config.push is False
     assert config.setup == []
@@ -318,6 +317,7 @@ WEB_PORT = { allocate = "port", min = 3200, max = 3201 }
     assert main(["my-feature", "--no-agent"]) == 0
     assert (tmp_path / ".worktrees" / "my-feature").exists()
     assert (tmp_path / ".new-feature" / "manifest.toml").exists()
+    assert load_manifest(tmp_path).features["my_feature"].branch == "my-feature"
     assert ".new-feature/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert ".worktrees/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert (tmp_path / ".worktrees" / "my-feature" / "setup-port.txt").read_text(encoding="utf-8") == "3200"
@@ -423,7 +423,5 @@ teardown = ["printf torn-down > teardown.txt"]
     assert not (tmp_path / ".worktrees" / "my-feature").exists()
     manifest = load_manifest(tmp_path)
     assert "my_feature" not in manifest.features
-    branches = subprocess.check_output(
-        ["git", "branch", "--list", "feature/my-feature"], cwd=tmp_path, text=True
-    )
+    branches = subprocess.check_output(["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True)
     assert branches.strip() == ""

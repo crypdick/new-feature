@@ -47,10 +47,7 @@ def test_setup_failure_forces_teardown(tmp_path: Path, monkeypatch: pytest.Monke
     assert cli.main(["broken", "--no-agent"]) == 1
     assert not (tmp_path / ".worktrees" / "broken").exists()
     assert (
-        subprocess.check_output(
-            ["git", "branch", "--list", "feature/broken"], cwd=tmp_path, text=True
-        ).strip()
-        == ""
+        subprocess.check_output(["git", "branch", "--list", "broken"], cwd=tmp_path, text=True).strip() == ""
     )
     assert load_manifest(tmp_path).features == {}
 
@@ -139,7 +136,7 @@ def test_doctor_repairs_only_fully_stale_records(
     assert cli.main(["stale", "--no-agent"]) == 0
     worktree = tmp_path / ".worktrees" / "stale"
     subprocess.run(["git", "worktree", "remove", "--force", str(worktree)], cwd=tmp_path, check=True)
-    subprocess.run(["git", "branch", "-D", "feature/stale"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "branch", "-D", "stale"], cwd=tmp_path, check=True)
 
     assert cli.main(["doctor", "--repair"]) == 0
     assert "removed stale manifest entry stale" in capsys.readouterr().out
