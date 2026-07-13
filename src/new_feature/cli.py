@@ -26,6 +26,16 @@ from new_feature.git import (
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
+from new_feature.help_text import (
+    CREATE_DESCRIPTION,
+    CREATE_EPILOG,
+    DOCTOR_DESCRIPTION,
+    INSTALL_CODEX_HOOK_DESCRIPTION,
+    LIST_DESCRIPTION,
+    MERGE_DESCRIPTION,
+    TEARDOWN_DESCRIPTION,
+    TOP_LEVEL_EPILOG,
+)
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.slug import feature_key, slugify
 
@@ -42,34 +52,93 @@ _COMMANDS = {
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="new-feature",
-        description="Create isolated feature worktrees and launch an interactive agent.",
+        description=("Manage the full lifecycle of isolated feature worktrees and their coding agents."),
+        epilog=TOP_LEVEL_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    create = subparsers.add_parser("create", help="create a feature worktree")
-    create.add_argument("name")
-    create.add_argument("--no-agent", action="store_true")
-    create.add_argument("--dry-run", action="store_true")
+    create = subparsers.add_parser(
+        "create",
+        help="create a worktree and launch its coding agent",
+        description=CREATE_DESCRIPTION,
+        epilog=CREATE_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    create.add_argument("name", metavar="NAME", help="descriptive feature name; normalized to a slug")
+    create.add_argument(
+        "--no-agent",
+        action="store_true",
+        help="set up the feature without spawning the configured agent subprocess",
+    )
+    create.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print allocated environment values without modifying the repository",
+    )
     create.set_defaults(command="create")
 
-    merge = subparsers.add_parser("merge", help="merge a feature into its target branch")
-    merge.add_argument("name")
+    merge = subparsers.add_parser(
+        "merge",
+        help="check and merge a managed feature",
+        description=MERGE_DESCRIPTION,
+        epilog="Example:\n  new-feature merge billing-webhooks",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    merge.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
     merge.set_defaults(command="merge")
 
-    teardown = subparsers.add_parser("teardown")
-    teardown.add_argument("name")
-    teardown.add_argument("--force", action="store_true")
+    teardown = subparsers.add_parser(
+        "teardown",
+        help="clean up and remove a managed feature",
+        description=TEARDOWN_DESCRIPTION,
+        epilog=(
+            "Examples:\n"
+            "  new-feature teardown billing-webhooks\n"
+            "  new-feature teardown billing-webhooks --force"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    teardown.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
+    teardown.add_argument(
+        "--force",
+        action="store_true",
+        help="discard uncommitted changes and unmerged feature commits",
+    )
     teardown.set_defaults(command="teardown")
 
-    feature_list = subparsers.add_parser("list", help="list managed feature worktrees")
+    feature_list = subparsers.add_parser(
+        "list",
+        help="show managed features and their current state",
+        description=LIST_DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     feature_list.set_defaults(command="list")
 
-    doctor = subparsers.add_parser("doctor", help="diagnose manifest and worktree state")
-    doctor.add_argument("--repair", action="store_true")
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="diagnose manifest, worktree, and branch consistency",
+        description=DOCTOR_DESCRIPTION,
+        epilog="Example:\n  new-feature doctor\n  new-feature doctor --repair",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    doctor.add_argument(
+        "--repair",
+        action="store_true",
+        help="remove manifest entries whose worktree and branch are both already gone",
+    )
     doctor.set_defaults(command="doctor")
 
     install_hook = subparsers.add_parser(
-        "install-codex-hook", help="install the Codex target-branch edit guard"
+        "install-codex-hook",
+        help="install the repository-local Codex worktree guard",
+        description=INSTALL_CODEX_HOOK_DESCRIPTION,
+        epilog=(
+            "Example:\n"
+            "  new-feature install-codex-hook\n\n"
+            "After installation, restart Codex and use `/hooks` to review and trust it."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     install_hook.set_defaults(command="install-codex-hook")
 
