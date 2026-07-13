@@ -1,3 +1,5 @@
+"""Enforce the managed-worktree policy for Codex tool calls."""
+
 from __future__ import annotations
 
 import json
@@ -64,12 +66,15 @@ _PATCH_FILE_PREFIXES = (
 
 @dataclass(frozen=True)
 class GitContext:
+    """Describe the repository and branch that own a target path."""
+
     root: Path
     branch: BranchName
     target_branch: BranchName
 
 
 def run_codex_hook(stdin: TextStream, stdout: TextStream, *, cwd: Path) -> int:
+    """Process one Codex hook payload and return its exit status."""
     """Deny direct Codex edits to a managed repository's target branch."""
     try:
         payload = json.load(stdin)
@@ -309,6 +314,7 @@ def _worktree_denial_reason(action: WorktreeAction) -> str:
 
 
 def main() -> int:
+    """Run the Codex hook with the process standard streams."""
     return run_codex_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
 
 

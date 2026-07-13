@@ -1,3 +1,5 @@
+"""Maintain ignore rules for managed runtime state."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,6 +8,7 @@ GENERATED_PATTERNS = [".new-feature/", ".worktrees/"]
 
 
 def ensure_generated_paths_ignored(repo_root: Path) -> None:
+    """Add managed-state paths to a repository's ``.gitignore`` when needed."""
     gitignore = repo_root / ".gitignore"
     existing = gitignore.read_text(encoding="utf-8").splitlines() if gitignore.exists() else []
     changed = False

@@ -1,0 +1,28 @@
+site_name: new-feature
+site_description: Create isolated feature worktrees with allocated runtime environments.
+site_url: https://crypdick.github.io/new-feature/
+repo_url: https://github.com/crypdick/new-feature
+edit_uri: edit/main/
+
+theme:
+  name: mkdocs
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - scripts/generate_api_docs.py
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            filters: public
+            members: null
+            members_order: source
+            show_source: false
+            show_root_full_path: true
+            show_root_heading: true
+            show_signature_annotations: true
+
+strict: true

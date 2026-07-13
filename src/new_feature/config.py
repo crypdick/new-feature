@@ -1,3 +1,5 @@
+"""Parse and represent repository configuration for the feature lifecycle."""
+
 from __future__ import annotations
 
 import hashlib
@@ -46,34 +48,46 @@ def _default_agents() -> dict[str, AgentCommand]:
 
 @dataclass(frozen=True)
 class LiteralEnvSpec:
+    """Configure an environment variable with one fixed value."""
+
     value: str
 
 
 @dataclass(frozen=True)
 class PortEnvSpec:
+    """Configure an environment variable with an allocatable TCP port range."""
+
     minimum: int = 1024
     maximum: int = 65535
 
 
 @dataclass(frozen=True)
 class IntegerEnvSpec:
+    """Configure an environment variable with an allocatable integer range."""
+
     minimum: int = 0
     maximum: int = 65535
 
 
 @dataclass(frozen=True)
 class NameEnvSpec:
+    """Configure an environment variable with a deterministic name allocation."""
+
     prefix: str
     max_length: int | None = None
 
 
 @dataclass(frozen=True)
 class SlugEnvSpec:
+    """Configure an environment variable with a feature-derived slug."""
+
     prefix: str
 
 
 @dataclass(frozen=True)
 class PathEnvSpec:
+    """Configure an environment variable with a feature-specific filesystem path."""
+
     base: str = ".new-feature"
 
 
@@ -82,6 +96,8 @@ type EnvSpec = LiteralEnvSpec | PortEnvSpec | IntegerEnvSpec | NameEnvSpec | Slu
 
 @dataclass(frozen=True)
 class ProjectConfig:
+    """Hold the normalized lifecycle configuration for one repository."""
+
     target_branch: str = "main"
     default_agent: str = "codex"
     agents: dict[str, AgentCommand] = field(default_factory=_default_agents)
@@ -248,6 +264,7 @@ def _bounds(
 
 
 def config_fingerprint(config: ProjectConfig) -> str:
+    """Return a stable digest representing a normalized project configuration."""
     payload = {
         "target_branch": config.target_branch,
         "default_agent": config.default_agent,
@@ -284,6 +301,7 @@ def _env_fingerprint(spec: EnvSpec) -> dict[str, object]:
 
 
 def load_project_config(repo_root: Path) -> ProjectConfig:
+    """Load configuration, prioritizing a standalone file over ``pyproject.toml``."""
     # NOTE: README.md documents standalone-file precedence over pyproject.toml.
     new_feature_toml = repo_root / _NEW_FEATURE_TOML
     if new_feature_toml.exists():

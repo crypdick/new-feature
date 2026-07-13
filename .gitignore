@@ -15,5 +15,6 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 htmlcov/
+site/
 .new-feature/
 .worktrees/

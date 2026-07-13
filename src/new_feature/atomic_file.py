@@ -1,3 +1,5 @@
+"""Write text files atomically and durably."""
+
 from __future__ import annotations
 
 import os

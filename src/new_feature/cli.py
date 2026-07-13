@@ -1,3 +1,5 @@
+"""Parse command-line input and run feature lifecycle commands."""
+
 from __future__ import annotations
 
 import argparse
@@ -52,11 +54,14 @@ _COMMANDS = frozenset({"create", "setup", "merge", "teardown", "list", "doctor",
 
 @dataclass(frozen=True)
 class AgentLaunchOptions:
+    """Capture optional command-line overrides for agent selection and prompts."""
+
     agent_override: str | None
     prompt_override: str | None
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for every supported lifecycle command."""
     parser = argparse.ArgumentParser(
         prog="new-feature",
         description=("Manage the full lifecycle of isolated feature worktrees and their coding agents."),
@@ -185,6 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse a command-line argument list into a lifecycle command request."""
     if argv and argv[0] not in _COMMANDS and not argv[0].startswith("-"):
         argv = ["create", *argv]
     parser = build_parser()
@@ -203,6 +209,7 @@ def _prompt(value: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line interface and return its process exit status."""
     raw_argv = sys.argv[1:] if argv is None else argv
     if raw_argv == ["codex-hook"]:
         return run_codex_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
