@@ -51,7 +51,7 @@ target_branch = "main"
 default_agent = "codex"
 agents = { codex = ["codex"], claude = ["claude"] }
 push = false
-setup = ["uv sync"]
+setup = ["uv sync --locked --all-groups"]
 pre_merge = ["uv run pre-commit run --all-files"]
 post_merge = ["uv run pre-commit run --all-files"]
 teardown = []
