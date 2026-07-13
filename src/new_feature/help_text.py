@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 _CONFIGURATION_GUIDE = """\
-Configuration (new-feature.toml, or [tool.new-feature] in pyproject.toml):
+Configuration (.new-feature.toml, or [tool.new-feature] in pyproject.toml):
   target_branch = "main"           # branch each feature starts from and merges into
   default_agent = "codex"            # configured name or executable command
   agents = { codex = ["codex"], claude = ["claude"] }
@@ -26,7 +26,7 @@ agents = { codex = ["codex"], claude = ["claude"] }, push = false, and empty com
 environment lists. Built-in create and setup prompts can be overridden with create_prompt and
 setup_prompt in TOML, or for one invocation with --prompt TEXT.
 
-If both new-feature.toml and pyproject.toml exist, new-feature.toml takes precedence.
+If both .new-feature.toml and pyproject.toml exist, .new-feature.toml takes precedence.
 For pyproject.toml, place these settings under [tool.new-feature] and use
 [tool.new-feature.env] instead of [env].
 
@@ -49,7 +49,7 @@ reserved per managed feature in .new-feature/manifest.toml.
 
 _AGENT_WORKFLOW = """\
 Workflow for an already-running coding agent:
-  1. Inspect new-feature.toml or pyproject.toml and add configuration if the project
+  1. Inspect .new-feature.toml or pyproject.toml and add configuration if the project
      needs setup, checks, cleanup, a different target branch, or isolated runtime values.
   2. From the control checkout, run: new-feature create NAME --no-agent
   3. Run `new-feature list` to confirm the normalized slug and worktree path, then do
@@ -120,7 +120,7 @@ Launch the configured coding agent in the current repository to set up or improv
 new-feature integration.
 
 The agent starts by reading `new-feature --help` and inspecting the repository and any
-existing new-feature.toml or [tool.new-feature] configuration. It proposes a
+existing .new-feature.toml or [tool.new-feature] configuration. It proposes a
 repository-specific plan, interviews you about unresolved choices, and asks whether to
 install the optional Codex hook before making changes. This command only launches the agent;
 it does not edit the repository, create a worktree, or install the hook itself.

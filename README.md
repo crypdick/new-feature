@@ -49,7 +49,7 @@ new-feature doctor --repair
 
 ## Project Config
 
-Add config to the target repo's `new-feature.toml`:
+Add config to the target repo's `.new-feature.toml`:
 
 ```toml
 target_branch = "main"
@@ -68,8 +68,8 @@ DATABASE_NAME = { allocate = "name", prefix = "myapp", max_length = 63 }
 CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
 ```
 
-All settings remain optional. If both `new-feature.toml` and `pyproject.toml` exist,
-`new-feature.toml` takes precedence. For projects that prefer to keep tool configuration in
+All settings remain optional. If both `.new-feature.toml` and `pyproject.toml` exist,
+`.new-feature.toml` takes precedence. For projects that prefer to keep tool configuration in
 `pyproject.toml`, place the same settings under `[tool.new-feature]` and use
 `[tool.new-feature.env]` instead of `[env]`.
 
