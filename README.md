@@ -99,6 +99,9 @@ new-feature setup --agent claude
 When the value exactly matches a key in `agents`, that configured command is used. Otherwise,
 `new-feature` parses the value as an executable command without invoking a shell.
 
+The built-in create and setup prompts can be overridden with `create_prompt` and `setup_prompt` in
+TOML, or for one invocation with `--prompt`.
+
 `setup` runs after worktree creation; `teardown` runs before worktree removal.
 
 Supported env entries:

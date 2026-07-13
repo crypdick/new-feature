@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -11,6 +12,7 @@ from new_feature.agent import (
     build_setup_prompt,
     launch_interactive_agent,
     resolve_agent,
+    resolve_prompt,
 )
 from new_feature.allocator import allocate_env
 from new_feature.codex_hook import TextStream, run_codex_hook
@@ -45,15 +47,13 @@ from new_feature.help_text import (
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.slug import feature_key, slugify
 
-_COMMANDS = {
-    "create",
-    "setup",
-    "merge",
-    "teardown",
-    "list",
-    "doctor",
-    "install-codex-hook",
-}
+_COMMANDS = frozenset({"create", "setup", "merge", "teardown", "list", "doctor", "install-codex-hook"})
+
+
+@dataclass(frozen=True)
+class AgentLaunchOptions:
+    agent_override: str | None
+    prompt_override: str | None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +89,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print allocated environment values without modifying the repository",
     )
+    create.add_argument(
+        "--prompt",
+        metavar="TEXT",
+        type=_prompt,
+        help="replace the configured or generated prompt passed to the agent",
+    )
     create.set_defaults(command="create")
 
     setup = subparsers.add_parser(
@@ -102,6 +108,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--agent",
         metavar="COMMAND",
         help="use a configured agent name or an executable command for this invocation",
+    )
+    setup.add_argument(
+        "--prompt",
+        metavar="TEXT",
+        type=_prompt,
+        help="replace the configured or generated prompt passed to the agent",
     )
     setup.set_defaults(command="setup")
 
@@ -179,7 +191,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.command is None:
         parser.error("feature name or subcommand is required")
+    if args.command == "create" and args.no_agent and args.prompt is not None:
+        parser.error("--prompt cannot be used with --no-agent")
     return args
+
+
+def _prompt(value: str) -> str:
+    if not value:
+        raise argparse.ArgumentTypeError("prompt must be a non-empty string")
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -206,14 +226,14 @@ def _run(args: argparse.Namespace) -> int:
 
 def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "setup":
-        return _setup(root, agent_override=args.agent)
+        return _setup(root, agent_options=AgentLaunchOptions(args.agent, args.prompt))
     if args.command == "create":
         return _create(
             root,
             args.name,
             no_agent=args.no_agent,
             dry_run=args.dry_run,
-            agent_override=args.agent,
+            agent_options=AgentLaunchOptions(args.agent, args.prompt),
         )
     if args.command == "merge":
         return _merge(root, args.name)
@@ -226,9 +246,10 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     raise NewFeatureError(f"unknown command: {args.command}")
 
 
-def _setup(root: Path, *, agent_override: str | None) -> int:
+def _setup(root: Path, *, agent_options: AgentLaunchOptions) -> int:
     config = load_project_config(root)
-    return launch_interactive_agent(resolve_agent(config, agent_override), root, {}, build_setup_prompt())
+    prompt = resolve_prompt(build_setup_prompt(), config.setup_prompt, agent_options.prompt_override)
+    return launch_interactive_agent(resolve_agent(config, agent_options.agent_override), root, {}, prompt)
 
 
 def _create(
@@ -237,7 +258,7 @@ def _create(
     *,
     no_agent: bool,
     dry_run: bool,
-    agent_override: str | None,
+    agent_options: AgentLaunchOptions,
 ) -> int:
     config = load_project_config(root)
     slug = slugify(name)
@@ -302,8 +323,10 @@ def _create(
         raise
     if no_agent:
         return 0
-    prompt = build_initial_prompt(slug)
-    return launch_interactive_agent(resolve_agent(config, agent_override), worktree, env, prompt)
+    prompt = resolve_prompt(build_initial_prompt(slug), config.create_prompt, agent_options.prompt_override)
+    return launch_interactive_agent(
+        resolve_agent(config, agent_options.agent_override), worktree, env, prompt
+    )
 
 
 def _merge(root: Path, name: str) -> int:

@@ -256,6 +256,7 @@ def test_config_fingerprint_is_stable_and_sensitive() -> None:
     baseline = config_fingerprint(ProjectConfig())
     assert baseline == config_fingerprint(ProjectConfig())
     assert baseline != config_fingerprint(ProjectConfig(push=True))
+    assert baseline != config_fingerprint(ProjectConfig(create_prompt="custom"))
     assert config_fingerprint(ProjectConfig(env={"VALUE": PortEnvSpec()})) != config_fingerprint(
         ProjectConfig(env={"VALUE": IntegerEnvSpec()})
     )
