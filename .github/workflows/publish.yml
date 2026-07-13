@@ -1,16 +1,74 @@
-name: Publish to PyPI
+name: Publish release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
   workflow_dispatch:
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    name: Detect version change
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Read release version
+        id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          import tomllib
+
+          def project_version(data: bytes) -> str:
+              return str(tomllib.loads(data.decode())["project"]["version"])
+
+          current = project_version(Path("pyproject.toml").read_bytes())
+          lock = tomllib.loads(Path("uv.lock").read_text())
+          locked = next(
+              str(package["version"])
+              for package in lock["package"]
+              if package["name"] == "new-feature" and package.get("source") == {"editable": "."}
+          )
+          if locked != current:
+              raise SystemExit(f"pyproject.toml version {current} does not match uv.lock version {locked}")
+
+          publish = os.environ["EVENT_NAME"] == "workflow_dispatch"
+          if not publish:
+              previous_file = subprocess.run(
+                  ["git", "show", f"{os.environ['BEFORE_SHA']}:pyproject.toml"],
+                  check=True,
+                  capture_output=True,
+              ).stdout
+              publish = project_version(previous_file) != current
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              print(f"publish={str(publish).lower()}", file=output)
+              print(f"version={current}", file=output)
+          PY
+
   build:
     name: Build distributions
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -38,7 +96,7 @@ jobs:
 
   publish:
     name: Publish distributions
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -53,3 +111,46 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  release:
+    name: Create GitHub release
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source and tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          tag="v${VERSION}"
+          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+            tag_sha="$(git rev-list -n 1 "${tag}")"
+            if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]; then
+              echo "${tag} already points to ${tag_sha}, expected ${RELEASE_SHA}" >&2
+              exit 1
+            fi
+          fi
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "GitHub release ${tag} already exists"
+            exit 0
+          fi
+          gh release create "${tag}" dist/* \
+            --generate-notes \
+            --target "${RELEASE_SHA}" \
+            --title "${tag}"
