@@ -18,3 +18,4 @@ htmlcov/
 site/
 .new-feature/
 .worktrees/
+*.local.toml

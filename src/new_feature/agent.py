@@ -5,10 +5,30 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from new_feature.config import AgentCommand, ProjectConfig
 from new_feature.errors import NewFeatureError
+
+
+@dataclass(frozen=True)
+class AgentLaunchOptions:
+    """Capture optional command-line agent and prompt selection."""
+
+    agent_override: str | None
+    prompt_override: str | None
+
+
+def agent_required_error(*, prompt_requested: bool) -> NewFeatureError:
+    """Explain how to select an agent when a launch was requested without one."""
+    if prompt_requested:
+        return NewFeatureError(
+            "--prompt requires an agent; pass --agent codex or --agent claude, or configure default_agent"
+        )
+    return NewFeatureError(
+        "setup requires an agent; pass --agent codex or --agent claude, or configure default_agent"
+    )
 
 
 def build_initial_prompt(name: str) -> str:
@@ -26,14 +46,17 @@ def build_setup_prompt() -> str:
     return (
         "Set up or improve this repository's integration with the `new-feature` tool. "
         "Start by running `new-feature --help`, then inspect the local repository and any "
-        "existing `.new-feature.toml` or `[tool.new-feature]` configuration. Infer the "
-        "appropriate target branch, agent command, setup and teardown commands, pre-merge "
-        "and post-merge checks, and isolated environment allocations. Present a concise "
-        "proposed plan and interview the user about only the material choices that cannot "
-        "be inferred safely, including default_agent and any named agents. "
+        "existing `.new-feature.toml`, `.new-feature.local.toml`, or `[tool.new-feature]` "
+        "configuration. Infer the appropriate shared target branch, setup and teardown "
+        "commands, pre-merge and post-merge checks, and isolated environment allocations. "
+        "Recommend the ignored `.new-feature.local.toml` sidecar for personal preferences "
+        "such as default_agent, push, and local agent commands; shared configuration still "
+        "supports them when repository policy requires it. Present a concise proposed plan "
+        "and interview the user about only the material choices that cannot be inferred safely. "
         "Explicitly ask whether they want to install the optional "
-        "repository-local Codex hook. Do not edit files or install the hook until the user "
-        "approves the plan. After approval, implement and verify the configuration, "
+        "repository-local Codex hook. The setup command has already initialized its ignore "
+        "rules; do not make further edits or install the hook until the user approves the plan. "
+        "After approval, implement and verify the configuration, "
         "improving existing configuration when present, and explain the resulting create, "
         "merge, and teardown workflow. Do not run `new-feature setup` again from this "
         "agent session."
@@ -50,9 +73,11 @@ def resolve_prompt(default: str, configured: str | None, override: str | None) -
     return default
 
 
-def resolve_agent(config: ProjectConfig, override: str | None) -> AgentCommand:
-    """Resolve a named or shell-form agent selection into an executable command."""
+def resolve_agent(config: ProjectConfig, override: str | None) -> AgentCommand | None:
+    """Resolve an optional named or shell-form agent selection into a command."""
     selection = config.default_agent if override is None else override
+    if selection is None:
+        return None
     configured = config.agents.get(selection)
     if configured is not None:
         return configured

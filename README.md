@@ -1,18 +1,19 @@
 # new-feature
 
-`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and launches the configured coding agent in the new worktree.
+`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and optionally launches a configured coding agent in the new worktree.
 
 ## Install
 
 ```bash
 uv tool install new-feature
-new-feature setup
+new-feature setup --agent codex
 ```
 
-`new-feature setup` launches the configured coding agent (Codex by default) in the
-current repository. The agent inspects the project, proposes a repository-specific
-configuration, asks about unresolved choices such as the optional Codex hook, and waits
-for approval before editing. Run it again to review and improve an existing integration.
+`new-feature setup` launches the configured coding agent in the current repository. With
+no local default agent yet, pass `--agent codex` or `--agent claude`. The agent inspects the
+project, proposes a repository-specific configuration, asks about unresolved choices such
+as the optional Codex hook, and waits for approval before further edits. Run it again to
+review and improve an existing integration.
 
 ## Documentation
 
@@ -30,10 +31,12 @@ To preview the site locally with live reload, run `uv run mkdocs serve`. Pushing
 
 ```bash
 # Ask an agent to configure or improve new-feature for this repository.
-new-feature setup
-# Create a feature worktree and launch the configured agent.
+new-feature setup --agent codex
+# Create a feature worktree. It launches no agent unless you configure a local default.
 new-feature my-feature
-# Create a feature worktree without launching another agent.
+# Create a feature worktree and explicitly launch an agent.
+new-feature my-feature --agent claude
+# Create a feature worktree without launching an agent, even when a default is configured.
 new-feature my-feature --no-agent
 # Merges the worktree into the main branch
 new-feature merge my-feature
@@ -49,13 +52,10 @@ new-feature doctor --repair
 
 ## Project Config
 
-Add config to the target repo's `.new-feature.toml`:
+Put shared repository policy in the target repo's `.new-feature.toml`:
 
 ```toml
 target_branch = "main"
-default_agent = "codex"
-agents = { codex = ["codex"], claude = ["claude"] }
-push = false
 setup = ["uv sync"]
 pre_merge = ["uv run pytest"]
 post_merge = ["uv run pytest"]
@@ -68,17 +68,34 @@ DATABASE_NAME = { allocate = "name", prefix = "myapp", max_length = 63 }
 CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
 ```
 
-All settings remain optional. If both `.new-feature.toml` and `pyproject.toml` exist,
-`.new-feature.toml` takes precedence. For projects that prefer to keep tool configuration in
-`pyproject.toml`, place the same settings under `[tool.new-feature]` and use
-`[tool.new-feature.env]` instead of `[env]`.
-
-`default_agent` is the configured agent name used when `--agent` is omitted. Codex and Claude are
-built in; `agents` adds or overrides named commands and fixed arguments. `new-feature` appends its
-generated feature prompt as the final argument, so agents that require a prompt flag can be configured
-directly:
+Keep personal preferences in the ignored `.new-feature.local.toml` sidecar:
 
 ```toml
+default_agent = "codex"
+push = true
+agents = { custom = ["custom-agent", "--prompt"] }
+```
+
+`new-feature setup` and feature creation ensure that `*.local.toml` is in `.gitignore`.
+This makes local agent commands, automatic-push preferences, and machine-specific values
+safe to customize without changing versioned repository policy.
+
+All settings remain optional. `new-feature` resolves a shared configuration from
+`.new-feature.toml` when present, otherwise from `[tool.new-feature]` in `pyproject.toml`.
+It then overlays `.new-feature.local.toml`, which uses the standalone-file syntax above and
+can also be used on its own. A local value replaces a shared scalar or command list; entries
+in `agents` and `env` overlay by name. For projects that prefer the shared `pyproject.toml`
+form, use `[tool.new-feature.env]` there and `[env]` in the local sidecar.
+
+`default_agent` and `push` remain supported in shared config when a repository deliberately
+wants to enforce them, but local placement is the recommended default. `default_agent` is
+optional: without it, feature creation does not launch an interactive agent. Codex and Claude
+are built in and always work with `--agent`; `agents` adds or overrides named commands and fixed
+arguments. `new-feature` appends its generated feature prompt as the final argument, so a
+personal agent that requires a prompt flag can be configured in the local sidecar:
+
+```toml
+# .new-feature.local.toml
 default_agent = "custom"
 agents = { custom = ["custom-agent", "--prompt"] }
 ```
@@ -110,7 +127,7 @@ Supported env entries:
 
 ## Lifecycle
 
-`new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches the configured agent in the worktree. It automatically adds `.new-feature/` and `.worktrees/` to `.gitignore`. If setup fails, it runs a forced teardown so the partial worktree, branch, and manifest entry do not linger.
+`new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to `.gitignore`. If setup fails, it runs a forced teardown so the partial worktree, branch, and manifest entry do not linger.
 
 `new-feature list` shows each managed feature and its current Git/worktree state. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift. `doctor --repair` removes stale manifest entries whose worktree and branch are both already gone, and recovers a missing worktree only when its branch is already merged.
 
