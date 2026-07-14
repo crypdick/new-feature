@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from new_feature import agent as agent_module
 from new_feature.agent import resolve_agent, resolve_prompt
-from new_feature.cli import parse_args
+from new_feature.cli import main, parse_args
 from new_feature.config import ProjectConfig, load_project_config
 from new_feature.errors import NewFeatureError
 
@@ -90,7 +91,75 @@ def test_resolve_agent_prefers_configured_names_and_parses_commands() -> None:
     )
 
 
+def test_resolve_agent_returns_none_without_a_default_and_keeps_builtin_aliases() -> None:
+    config = ProjectConfig()
+
+    assert resolve_agent(config, None) is None
+    assert resolve_agent(config, "codex") == ("codex",)
+    assert resolve_agent(config, "claude") == ("claude",)
+
+
 @pytest.mark.parametrize("selection", ["", 'fooagent "unterminated'])
 def test_resolve_agent_rejects_invalid_command(selection: str) -> None:
     with pytest.raises(NewFeatureError, match="agent command"):
         resolve_agent(ProjectConfig(), selection)
+
+
+def test_create_without_default_agent_does_not_launch_an_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["my-feature"]) == 0
+    assert (tmp_path / ".worktrees" / "my-feature").is_dir()
+
+
+def test_create_rejects_prompt_without_an_effective_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["my-feature", "--prompt", "implement it"]) == 1
+
+    assert "--prompt requires an agent" in capsys.readouterr().err
+    assert not (tmp_path / ".worktrees" / "my-feature").exists()
+
+
+def test_setup_without_default_agent_directs_user_to_builtin_agents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["setup"]) == 1
+
+    error = capsys.readouterr().err
+    assert "setup requires an agent" in error
+    assert "--agent codex" in error
+    assert "--agent claude" in error
+    assert (tmp_path / ".gitignore").read_text(
+        encoding="utf-8"
+    ) == ".new-feature/\n.worktrees/\n*.local.toml\n"
+
+
+def test_setup_launches_builtin_codex_without_toml_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.conftest import init_git_repo
+
+    launches: list[tuple[object, ...]] = []
+    monkeypatch.setattr(agent_module, "launch_interactive_agent", lambda *args: launches.append(args) or 0)
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["setup", "--agent", "codex"]) == 0
+
+    assert launches[0][0] == ("codex",)

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-GENERATED_PATTERNS = [".new-feature/", ".worktrees/"]
+# NOTE: README.md documents the generated ignore rules for managed state and local preferences.
+GENERATED_PATTERNS = [".new-feature/", ".worktrees/", "*.local.toml"]
 
 
 def ensure_generated_paths_ignored(repo_root: Path) -> None:
