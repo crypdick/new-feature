@@ -287,12 +287,17 @@ def test_create_dry_run_and_duplicate_detection(
     monkeypatch.chdir(tmp_path)
 
     assert main(["my-feature", "--dry-run"]) == 0
-    assert "NEW_FEATURE_BRANCH=my-feature" in capsys.readouterr().out
+    dry_run_output = capsys.readouterr().out
+    assert "NEW_FEATURE_BRANCH=my-feature" in dry_run_output
+    assert "Worktree ready:" not in dry_run_output
+    assert "Next: cd --" not in dry_run_output
     assert main(["my-feature", "--no-agent"]) == 0
     assert main(["my-feature", "--no-agent"]) == 1
 
 
-def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_launches_configured_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from tests.conftest import init_git_repo
 
     agent = tmp_path / "agent.py"
@@ -316,6 +321,9 @@ def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.Mo
     assert main(["my-feature"]) == 0
     output = tmp_path / ".worktrees" / "my-feature" / "agent-ran.txt"
     assert output.read_text(encoding="utf-8") == "my-feature|--prompt|configured create prompt"
+    cli_output = capsys.readouterr().out
+    assert "Worktree ready:" not in cli_output
+    assert "Next: cd --" not in cli_output
 
 
 def test_create_launches_unconfigured_agent_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

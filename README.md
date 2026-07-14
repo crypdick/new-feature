@@ -129,6 +129,15 @@ Supported env entries:
 
 `new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to `.gitignore`. If setup fails, it runs a forced teardown so the partial worktree, branch, and manifest entry do not linger.
 
+After a successful create that does not launch an agent (for example, with `--no-agent` or no selected agent), `new-feature` prints the absolute worktree path and a copy-pasteable command such as:
+
+```text
+Worktree ready: /path/to/repository/.worktrees/my-feature
+Next: cd -- /path/to/repository/.worktrees/my-feature
+```
+
+A CLI process cannot change its parent shell's or an already-running coding agent's working directory. In an interactive shell, run the printed `cd` command; an existing coding agent should use the printed absolute path as the working directory for its subsequent tools. Paths on the `Next:` line are shell-quoted when necessary.
+
 `new-feature list` shows each managed feature and its current Git/worktree state. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift. `doctor --repair` removes stale manifest entries whose worktree and branch are both already gone, and recovers a missing worktree only when its branch is already merged.
 
 `new-feature merge my-feature` runs pre-merge checks in the feature worktree and rejects a conflicting merge before changing the target checkout. It then starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`. Any failure after the merge starts is aborted.
