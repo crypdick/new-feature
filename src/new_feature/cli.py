@@ -43,6 +43,7 @@ from new_feature.lifecycle import now
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.recovery import repair_feature
 from new_feature.slug import feature_key, slugify
+from new_feature.worktree_guidance import build_worktree_ready_message
 
 _COMMANDS = frozenset({"create", "setup", "merge", "teardown", "list", "doctor", "install-codex-hook"})
 
@@ -326,6 +327,7 @@ def _create(
             ) from setup_error
         raise
     if agent_command is None:
+        print(build_worktree_ready_message(worktree))
         return 0
     prompt = agent_module.resolve_prompt(
         agent_module.build_initial_prompt(slug), config.create_prompt, agent_options.prompt_override

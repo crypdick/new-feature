@@ -105,16 +105,42 @@ def test_resolve_agent_rejects_invalid_command(selection: str) -> None:
         resolve_agent(ProjectConfig(), selection)
 
 
-def test_create_without_default_agent_does_not_launch_an_agent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_create_without_default_agent_prints_worktree_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from tests.conftest import init_git_repo
 
-    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
-    monkeypatch.chdir(tmp_path)
+    repo = tmp_path / "repository with spaces"
+    repo.mkdir()
+    init_git_repo(repo, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(repo)
+
+    worktree = repo / ".worktrees" / "my-feature"
 
     assert main(["my-feature"]) == 0
-    assert (tmp_path / ".worktrees" / "my-feature").is_dir()
+
+    assert worktree.is_dir()
+    assert capsys.readouterr().out == (f"Worktree ready: {worktree}\nNext: cd -- '{worktree}'\n")
+
+
+def test_create_with_no_agent_prints_worktree_guidance_despite_default_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    launches: list[tuple[object, ...]] = []
+    monkeypatch.setattr(agent_module, "launch_interactive_agent", lambda *args: launches.append(args) or 0)
+    init_git_repo(
+        tmp_path,
+        '[project]\nname = "demo"\n\n[tool.new-feature]\ndefault_agent = "codex"\n',
+    )
+    monkeypatch.chdir(tmp_path)
+    worktree = tmp_path / ".worktrees" / "my-feature"
+
+    assert main(["my-feature", "--no-agent"]) == 0
+
+    assert launches == []
+    assert capsys.readouterr().out == f"Worktree ready: {worktree}\nNext: cd -- {worktree}\n"
 
 
 def test_create_rejects_prompt_without_an_effective_agent(

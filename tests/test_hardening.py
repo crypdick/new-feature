@@ -45,7 +45,9 @@ def test_dry_run_rejects_existing_feature(tmp_path: Path, monkeypatch: pytest.Mo
     assert cli.main(["preview", "--dry-run"]) == 1
 
 
-def test_setup_failure_forces_teardown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_setup_failure_forces_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from tests.conftest import init_git_repo
 
     init_git_repo(
@@ -55,6 +57,9 @@ def test_setup_failure_forces_teardown(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.chdir(tmp_path)
 
     assert cli.main(["broken", "--no-agent"]) == 1
+    output = capsys.readouterr().out
+    assert "Worktree ready:" not in output
+    assert "Next: cd --" not in output
     assert not (tmp_path / ".worktrees" / "broken").exists()
     assert (
         subprocess.check_output(["git", "branch", "--list", "broken"], cwd=tmp_path, text=True).strip() == ""

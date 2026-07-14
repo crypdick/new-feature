@@ -73,6 +73,8 @@ def test_top_level_help_explains_agent_workflow():
     assert "Configured commands are shell strings run sequentially" in help_text
     assert "NEW_FEATURE_WORKTREE" in help_text
     assert "cannot be exported into the already-running caller" in help_text
+    assert "Worktree ready: ABSOLUTE_PATH" in help_text
+    assert "Next: cd -- SHELL_QUOTED_ABSOLUTE_PATH" in help_text
     assert "Run lifecycle commands from the control checkout" in help_text
     assert "merge" in help_text
     assert "teardown" in help_text

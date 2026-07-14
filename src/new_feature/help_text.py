@@ -63,14 +63,21 @@ Workflow for an already-running coding agent:
      configuration if the project needs setup, checks, cleanup, a different target branch,
      isolated runtime values, or personal agent preferences.
   2. From the control checkout, run: new-feature create NAME --no-agent
-  3. Run `new-feature list` to confirm the normalized slug and worktree path, then do
-     all implementation and commits inside .worktrees/SLUG.
+  3. Use the printed absolute worktree path as the working directory for subsequent tools,
+     then do all implementation and commits inside that worktree.
   4. Return to the control checkout and run: new-feature merge SLUG
   5. After a successful merge, run: new-feature teardown SLUG
 
 --no-agent prevents a nested coding-agent subprocess. Setup still receives allocated
 environment variables, but they cannot be exported into the already-running caller.
 Read .new-feature/manifest.toml and export any values needed by later manual commands.
+
+After a successful create that does not launch an agent, new-feature prints:
+  Worktree ready: ABSOLUTE_PATH
+  Next: cd -- SHELL_QUOTED_ABSOLUTE_PATH
+The CLI cannot change its parent shell's or an already-running coding agent's working
+directory. In an interactive shell, run the printed command; an existing coding agent
+uses the printed absolute path as its working directory for subsequent tools.
 
 Run lifecycle commands from the control checkout: its .new-feature/manifest.toml owns
 the managed-feature records. The feature worktree is for implementation work.
@@ -105,6 +112,10 @@ run project setup commands, and optionally launch the selected interactive codin
 The worktree is created at .worktrees/SLUG from the configured target branch. Runtime
 values are reserved in .new-feature/manifest.toml. If setup fails, new-feature attempts
 a forced teardown so a partial feature does not linger.
+
+When creation succeeds without launching an agent, new-feature prints the worktree's
+absolute path and a copy-pasteable `Next: cd -- ...` command. The path in that command
+is shell-quoted when necessary.
 """
 
 CREATE_EPILOG = f"""\
