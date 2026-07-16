@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from new_feature.agent import resolve_agent, resolve_prompt
-from new_feature.cli import parse_args
+from new_feature.cli_parser import parse_args
 from new_feature.config import ProjectConfig, load_project_config
 from new_feature.errors import NewFeatureError
 

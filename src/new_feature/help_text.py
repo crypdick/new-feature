@@ -68,7 +68,7 @@ the managed-feature records. The feature worktree is for implementation work.
 _STATE_GUIDE = """\
 Managed state and safety:
   - setup launches an agent in the current checkout to configure new-feature itself.
-  - Codex users can run install-codex-hook to enforce the managed worktree workflow.
+  - install-codex-hook and install-claude-hook enforce the managed worktree workflow.
   - Worktrees live at .worktrees/SLUG and branches are named SLUG.
   - .new-feature/ and .worktrees/ are automatically added to .gitignore.
   - Setup failure triggers forced cleanup of the partial feature.
@@ -122,8 +122,9 @@ new-feature integration.
 The agent starts by reading `new-feature --help` and inspecting the repository and any
 existing .new-feature.toml or [tool.new-feature] configuration. It proposes a
 repository-specific plan, interviews you about unresolved choices, and asks whether to
-install the optional Codex hook before making changes. This command only launches the agent;
-it does not edit the repository, create a worktree, or install the hook itself.
+install the optional Codex or Claude Code hook before making changes.
+This command only launches the agent; it does not edit the repository, create a
+worktree, or install the hooks itself.
 """
 
 INSTALL_CODEX_HOOK_DESCRIPTION = """\
@@ -137,6 +138,21 @@ preserved, while an installed new-feature or legacy worktree guard is replaced.
 The hook runs `new-feature codex-hook`, so new-feature must remain available on PATH.
 Codex applies repository hooks only after the repository is trusted. Restart Codex after
 installation, then use `/hooks` to review and trust the guard.
+"""
+
+INSTALL_CLAUDE_HOOK_DESCRIPTION = """\
+Install or update the repository-local Claude Code PreToolUse guard in
+.claude/settings.json.
+
+The guard denies Claude Code direct Write, Edit, MultiEdit, and NotebookEdit operations
+on the configured target branch. It also denies raw `git worktree add` and
+`git worktree remove` commands so Claude Code uses the managed new-feature lifecycle.
+Unrelated settings and hooks are preserved, while an installed new-feature guard is
+replaced.
+
+The hook runs `new-feature claude-hook`, so new-feature must remain available on PATH.
+Claude Code loads hooks at session start, so restart Claude Code after installation and
+review the loaded hooks with `/hooks`.
 """
 
 MERGE_DESCRIPTION = """\

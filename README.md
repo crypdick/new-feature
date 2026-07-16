@@ -118,14 +118,17 @@ Supported env entries:
 
 `new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the worktree has uncommitted changes or the branch has commits that are not in the target branch, pass `--force` to abandon them deliberately.
 
-## Codex hook
+## Agent hooks
 
-Install the Codex hook in the current repository:
+Install the Codex or Claude Code hook in the current repository:
 
 ```bash
 new-feature install-codex-hook
+new-feature install-claude-hook
 ```
 
-This writes `.codex/hooks.json`; Codex loads the guard only for this trusted repository. The guard
-protects the configured target branch from direct agent edits and requires Git worktree creation and
-removal to go through the managed `new-feature` lifecycle.
+The Codex hook is written to `.codex/hooks.json`; Codex loads the guard only for this trusted
+repository. The Claude Code hook is written to the `hooks` section of `.claude/settings.json`,
+which Claude Code loads at session start. Both guards protect the configured target branch from
+direct agent edits and require Git worktree creation and removal to go through the managed
+`new-feature` lifecycle.

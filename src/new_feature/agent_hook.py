@@ -1,4 +1,4 @@
-"""Adapt Codex PreToolUse payloads to the managed-worktree policy."""
+"""Adapt Codex and Claude Code PreToolUse payloads to the managed-worktree policy."""
 
 from __future__ import annotations
 
@@ -18,9 +18,12 @@ from new_feature.hook_policy import (
 
 type TextStream = StringIO | TextIOWrapper
 
-CodexToolName = NewType("CodexToolName", str)
+AgentToolName = NewType("AgentToolName", str)
 
-_DIRECT_EDIT_TOOLS = {"Write", "Edit", "apply_patch"}
+_FILE_PATH_TOOLS = {"Write", "Edit", "MultiEdit"}
+_NOTEBOOK_TOOLS = {"NotebookEdit"}
+_PATCH_TOOLS = {"apply_patch"}
+_DIRECT_EDIT_TOOLS = _FILE_PATH_TOOLS | _NOTEBOOK_TOOLS | _PATCH_TOOLS
 _PATCH_FILE_PREFIXES = (
     "*** Add File: ",
     "*** Update File: ",
@@ -28,8 +31,8 @@ _PATCH_FILE_PREFIXES = (
 )
 
 
-def run_codex_hook(stdin: TextStream, stdout: TextStream, *, cwd: Path) -> int:
-    """Process one Codex PreToolUse payload and return its exit status."""
+def run_agent_hook(stdin: TextStream, stdout: TextStream, *, cwd: Path) -> int:
+    """Process one PreToolUse payload and return its exit status."""
     try:
         payload = json.load(stdin)
     except (json.JSONDecodeError, OSError):
@@ -53,7 +56,7 @@ def _request_from_payload(payload: dict[object, object], *, cwd: Path) -> HookRe
         return _bash_request(tool_input)
     if raw_tool_name not in _DIRECT_EDIT_TOOLS:
         return None
-    return _edit_request(CodexToolName(raw_tool_name), tool_input, cwd=cwd)
+    return _edit_request(AgentToolName(raw_tool_name), tool_input, cwd=cwd)
 
 
 def _bash_request(tool_input: object) -> WorktreeRequest | None:
@@ -66,17 +69,18 @@ def _bash_request(tool_input: object) -> WorktreeRequest | None:
     return WorktreeRequest(action) if action is not None else None
 
 
-def _edit_request(tool_name: CodexToolName, tool_input: object, *, cwd: Path) -> EditRequest | None:
+def _edit_request(tool_name: AgentToolName, tool_input: object, *, cwd: Path) -> EditRequest | None:
     targets = _direct_edit_targets(tool_name, tool_input, cwd=cwd)
     return EditRequest(tuple(targets)) if targets else None
 
 
-def _direct_edit_targets(tool_name: CodexToolName, tool_input: object, *, cwd: Path) -> list[Path]:
-    if tool_name in {"Write", "Edit"} and isinstance(tool_input, dict):
-        file_path = tool_input.get("file_path")
-        return [Path(file_path)] if isinstance(file_path, str) and file_path else [cwd]
-    if tool_name == "apply_patch":
+def _direct_edit_targets(tool_name: AgentToolName, tool_input: object, *, cwd: Path) -> list[Path]:
+    if tool_name in _PATCH_TOOLS:
         return _apply_patch_targets(tool_input) or [cwd]
+    field = "notebook_path" if tool_name in _NOTEBOOK_TOOLS else "file_path"
+    if isinstance(tool_input, dict):
+        file_path = tool_input.get(field)
+        return [Path(file_path)] if isinstance(file_path, str) and file_path else [cwd]
     return []
 
 
@@ -116,8 +120,8 @@ def _deny(stdout: TextStream, reason: str) -> None:
 
 
 def main() -> int:
-    """Run the Codex hook with the process standard streams."""
-    return run_codex_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
+    """Run the PreToolUse hook with the process standard streams."""
+    return run_agent_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
 
 
 if __name__ == "__main__":
