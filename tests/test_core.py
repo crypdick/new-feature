@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 from new_feature.agent import build_initial_prompt, build_setup_prompt
 from new_feature.allocator import allocate_env
-from new_feature.cli import build_parser, main, parse_args
+from new_feature.cli import main
+from new_feature.cli_parser import build_parser, parse_args
 from new_feature.commands import run_commands
 from new_feature.config import (
     IntegerEnvSpec,
@@ -76,6 +77,7 @@ def test_top_level_help_explains_agent_workflow():
     assert "teardown" in help_text
     assert "setup" in help_text
     assert "install-codex-hook" in help_text
+    assert "install-claude-hook" in help_text
 
 
 @pytest.mark.parametrize(
@@ -88,6 +90,7 @@ def test_top_level_help_explains_agent_workflow():
         ("list", "owns .new-feature/manifest.toml"),
         ("doctor", "owns .new-feature/manifest.toml"),
         ("install-codex-hook", "Unrelated repository hooks are"),
+        ("install-claude-hook", "Unrelated settings and hooks are"),
     ],
 )
 def test_subcommand_help_explains_effects_and_safety(command: str, expected: str, capsys):
@@ -109,7 +112,7 @@ def test_setup_prompt_requires_inspection_approval_and_optional_hook_choice():
     assert "existing `.new-feature.toml` or `[tool.new-feature]` configuration" in prompt
     assert "Present a concise proposed plan" in prompt
     assert "Do not edit files or install the hook until the user approves" in prompt
-    assert "optional repository-local Codex hook" in prompt
+    assert "optional repository-local Codex or Claude Code hook" in prompt
     assert "improving existing configuration when present" in prompt
 
 

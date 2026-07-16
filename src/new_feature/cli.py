@@ -1,11 +1,10 @@
-"""Parse command-line input and run feature lifecycle commands."""
+"""Run feature lifecycle commands from parsed command-line input."""
 
 from __future__ import annotations
 
-import argparse
+import argparse  # noqa: TC003 - package-wide beartype needs annotation types at runtime
 import sys
 from dataclasses import dataclass
-from importlib.metadata import version
 from pathlib import Path
 from typing import cast
 
@@ -16,9 +15,9 @@ from new_feature.agent import (
     resolve_agent,
     resolve_prompt,
 )
+from new_feature.agent_hook import TextStream, run_agent_hook
 from new_feature.allocator import allocate_env
-from new_feature.codex_hook import TextStream, run_codex_hook
-from new_feature.codex_install import install_codex_hook
+from new_feature.cli_parser import parse_args
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
 from new_feature.errors import NewFeatureError
@@ -35,23 +34,13 @@ from new_feature.git import (
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
-from new_feature.help_text import (
-    CREATE_DESCRIPTION,
-    CREATE_EPILOG,
-    DOCTOR_DESCRIPTION,
-    INSTALL_CODEX_HOOK_DESCRIPTION,
-    LIST_DESCRIPTION,
-    MERGE_DESCRIPTION,
-    SETUP_DESCRIPTION,
-    TEARDOWN_DESCRIPTION,
-    TOP_LEVEL_EPILOG,
-)
+from new_feature.hook_install import install_claude_hook, install_codex_hook
 from new_feature.lifecycle import now
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.recovery import repair_feature
 from new_feature.slug import feature_key, slugify
 
-_COMMANDS = frozenset({"create", "setup", "merge", "teardown", "list", "doctor", "install-codex-hook"})
+_INTERNAL_HOOK_COMMANDS = frozenset({"codex-hook", "claude-hook"})
 
 
 @dataclass(frozen=True)
@@ -62,160 +51,11 @@ class AgentLaunchOptions:
     prompt_override: str | None
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Build the command-line parser for every supported lifecycle command."""
-    parser = argparse.ArgumentParser(
-        prog="new-feature",
-        description=("Manage the full lifecycle of isolated feature worktrees and their coding agents."),
-        epilog=TOP_LEVEL_EPILOG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {version('new-feature')}")
-    subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
-
-    create = subparsers.add_parser(
-        "create",
-        help="create a worktree and launch its coding agent",
-        description=CREATE_DESCRIPTION,
-        epilog=CREATE_EPILOG,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    create.add_argument("name", metavar="NAME", help="descriptive feature name; normalized to a slug")
-    agent_selection = create.add_mutually_exclusive_group()
-    agent_selection.add_argument(
-        "--no-agent",
-        action="store_true",
-        help="set up the feature without spawning the configured agent subprocess",
-    )
-    agent_selection.add_argument(
-        "--agent",
-        metavar="COMMAND",
-        help="use a configured agent name or an executable command for this invocation",
-    )
-    create.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="print allocated environment values without modifying the repository",
-    )
-    create.add_argument(
-        "--prompt",
-        metavar="TEXT",
-        type=_prompt,
-        help="replace the configured or generated prompt passed to the agent",
-    )
-    create.set_defaults(command="create")
-
-    setup = subparsers.add_parser(
-        "setup",
-        help="launch an agent to configure new-feature for this repository",
-        description=SETUP_DESCRIPTION,
-        epilog="Example:\n  new-feature setup",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    setup.add_argument(
-        "--agent",
-        metavar="COMMAND",
-        help="use a configured agent name or an executable command for this invocation",
-    )
-    setup.add_argument(
-        "--prompt",
-        metavar="TEXT",
-        type=_prompt,
-        help="replace the configured or generated prompt passed to the agent",
-    )
-    setup.set_defaults(command="setup")
-
-    merge = subparsers.add_parser(
-        "merge",
-        help="check and merge a managed feature",
-        description=MERGE_DESCRIPTION,
-        epilog="Example:\n  new-feature merge billing-webhooks",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    merge.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
-    merge.set_defaults(command="merge")
-
-    teardown = subparsers.add_parser(
-        "teardown",
-        help="clean up and remove a managed feature",
-        description=TEARDOWN_DESCRIPTION,
-        epilog=(
-            "Examples:\n"
-            "  new-feature teardown billing-webhooks\n"
-            "  new-feature teardown billing-webhooks --force"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    teardown.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
-    teardown.add_argument(
-        "--force",
-        action="store_true",
-        help="discard uncommitted changes and unmerged feature commits",
-    )
-    teardown.set_defaults(command="teardown")
-
-    feature_list = subparsers.add_parser(
-        "list",
-        help="show managed features and their current state",
-        description=LIST_DESCRIPTION,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    feature_list.set_defaults(command="list")
-
-    doctor = subparsers.add_parser(
-        "doctor",
-        help="diagnose manifest, worktree, and branch consistency",
-        description=DOCTOR_DESCRIPTION,
-        epilog="Example:\n  new-feature doctor\n  new-feature doctor --repair",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    doctor.add_argument(
-        "--repair",
-        action="store_true",
-        help="remove manifest entries whose worktree and branch are both already gone",
-    )
-    doctor.set_defaults(command="doctor")
-
-    install_hook = subparsers.add_parser(
-        "install-codex-hook",
-        help="install the repository-local Codex worktree guard",
-        description=INSTALL_CODEX_HOOK_DESCRIPTION,
-        epilog=(
-            "Example:\n"
-            "  new-feature install-codex-hook\n\n"
-            "After installation, restart Codex and use `/hooks` to review and trust it."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    install_hook.set_defaults(command="install-codex-hook")
-
-    return parser
-
-
-def parse_args(argv: list[str]) -> argparse.Namespace:
-    """Parse a command-line argument list into a lifecycle command request."""
-    if argv and argv[0] not in _COMMANDS and not argv[0].startswith("-"):
-        argv = ["create", *argv]
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if args.command is None:
-        parser.error("feature name or subcommand is required")
-    if args.command == "create" and args.no_agent and args.prompt is not None:
-        parser.error("--prompt cannot be used with --no-agent")
-    return args
-
-
-def _prompt(value: str) -> str:
-    if not value:
-        raise argparse.ArgumentTypeError("prompt must be a non-empty string")
-    return value
-
-
 def main(argv: list[str] | None = None) -> int:
     """Run the command-line interface and return its process exit status."""
     raw_argv = sys.argv[1:] if argv is None else argv
-    if raw_argv == ["codex-hook"]:
-        return run_codex_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
+    if len(raw_argv) == 1 and raw_argv[0] in _INTERNAL_HOOK_COMMANDS:
+        return run_agent_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
     args = parse_args(raw_argv)
     try:
         return _run(args)
@@ -230,6 +70,11 @@ def _run(args: argparse.Namespace) -> int:
         path = install_codex_hook(root)
         print(f"Installed Codex target-branch guard in {path}")
         print("Restart Codex, then review and trust the hook with /hooks.")
+        return 0
+    if args.command == "install-claude-hook":
+        path = install_claude_hook(root)
+        print(f"Installed Claude Code target-branch guard in {path}")
+        print("Restart Claude Code so the session reloads its hooks, then review them with /hooks.")
         return 0
     return _dispatch(args, root)
 

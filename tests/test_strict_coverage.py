@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from new_feature.allocator import allocate_env
-from new_feature.cli import main, parse_args
+from new_feature.cli import main
+from new_feature.cli_parser import parse_args
 from new_feature.config import (
     IntegerEnvSpec,
     LiteralEnvSpec,

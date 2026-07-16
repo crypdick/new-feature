@@ -32,7 +32,7 @@ def build_setup_prompt() -> str:
         "proposed plan and interview the user about only the material choices that cannot "
         "be inferred safely, including default_agent and any named agents. "
         "Explicitly ask whether they want to install the optional "
-        "repository-local Codex hook. Do not edit files or install the hook until the user "
+        "repository-local Codex or Claude Code hook. Do not edit files or install the hook until the user "
         "approves the plan. After approval, implement and verify the configuration, "
         "improving existing configuration when present, and explain the resulting create, "
         "merge, and teardown workflow. Do not run `new-feature setup` again from this "
