@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 _CONFIGURATION_GUIDE = """\
-Configuration (.new-feature.toml, or [tool.new-feature] in pyproject.toml):
+Configuration: put shared repository policy in .new-feature.toml, or in
+[tool.new-feature] in pyproject.toml:
   target_branch = "main"           # branch each feature starts from and merges into
-  default_agent = "codex"            # configured name or executable command
-  agents = { codex = ["codex"], claude = ["claude"] }
-  push = false                      # push target_branch after a successful merge
-  setup = ["uv sync"]               # run in the feature worktree after creation
-  pre_merge = ["uv run pytest"]     # run in the feature worktree before merging
-  post_merge = ["uv run pytest"]    # run in the control checkout after merging
-  teardown = []                     # run in the feature worktree before removal
+  setup = ["uv sync"]              # run in the feature worktree after creation
+  pre_merge = ["uv run pytest"]    # run in the feature worktree before merging
+  post_merge = ["uv run pytest"]   # run in the control checkout after merging
+  teardown = []                    # run in the feature worktree before removal
 
   [env]
   WEB_PORT = { allocate = "port", min = 3000, max = 3999 }
@@ -21,14 +19,26 @@ Configuration (.new-feature.toml, or [tool.new-feature] in pyproject.toml):
   CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
   APP_ENV = { value = "development" }
 
-All settings are optional. The defaults are target_branch = "main", default_agent = "codex",
-agents = { codex = ["codex"], claude = ["claude"] }, push = false, and empty command and
-environment lists. Built-in create and setup prompts can be overridden with create_prompt and
-setup_prompt in TOML, or for one invocation with --prompt TEXT.
+Put personal preferences in the ignored .new-feature.local.toml sidecar:
+  default_agent = "codex"          # selected when --agent is omitted
+  push = true                       # push target_branch after a successful merge
+  agents = { custom = ["custom-agent", "--prompt"] }
 
-If both .new-feature.toml and pyproject.toml exist, .new-feature.toml takes precedence.
-For pyproject.toml, place these settings under [tool.new-feature] and use
+All settings are optional. The defaults are target_branch = "main", no default agent,
+built-in codex and claude aliases, push = false, and empty command and environment lists.
+Without default_agent, feature creation does not launch an interactive agent. Built-in create
+and setup prompts can be overridden with create_prompt and setup_prompt in TOML, or for one
+invocation with --prompt TEXT.
+
+new-feature resolves .new-feature.toml over pyproject.toml, then overlays
+.new-feature.local.toml. A local scalar or command list replaces its shared value; agents and
+env entries overlay by name. The local sidecar uses the standalone syntax above, even when the
+shared configuration is in pyproject.toml. For pyproject.toml, place shared env values under
 [tool.new-feature.env] instead of [env].
+
+default_agent and push are supported in shared config when a repository deliberately requires
+them, but local placement is recommended. new-feature setup and feature creation add
+*.local.toml to .gitignore.
 
 Configured commands are shell strings run sequentially. They receive the allocated
 environment plus NEW_FEATURE_NAME, NEW_FEATURE_SLUG, NEW_FEATURE_BRANCH,
@@ -49,11 +59,12 @@ reserved per managed feature in .new-feature/manifest.toml.
 
 _AGENT_WORKFLOW = """\
 Workflow for an already-running coding agent:
-  1. Inspect .new-feature.toml or pyproject.toml and add configuration if the project
-     needs setup, checks, cleanup, a different target branch, or isolated runtime values.
+  1. Inspect .new-feature.toml, .new-feature.local.toml, or pyproject.toml and add
+     configuration if the project needs setup, checks, cleanup, a different target branch,
+     isolated runtime values, or personal agent preferences.
   2. From the control checkout, run: new-feature create NAME --no-agent
-  3. Run `new-feature list` to confirm the normalized slug and worktree path, then do
-     all implementation and commits inside .worktrees/SLUG.
+  3. Use the printed absolute worktree path as the working directory for subsequent tools,
+     then do all implementation and commits inside that worktree.
   4. Return to the control checkout and run: new-feature merge SLUG
   5. After a successful merge, run: new-feature teardown SLUG
 
@@ -61,16 +72,23 @@ Workflow for an already-running coding agent:
 environment variables, but they cannot be exported into the already-running caller.
 Read .new-feature/manifest.toml and export any values needed by later manual commands.
 
+After a successful create that does not launch an agent, new-feature prints:
+  Worktree ready: ABSOLUTE_PATH
+  Next: cd -- SHELL_QUOTED_ABSOLUTE_PATH
+The CLI cannot change its parent shell's or an already-running coding agent's working
+directory. In an interactive shell, run the printed command; an existing coding agent
+uses the printed absolute path as its working directory for subsequent tools.
+
 Run lifecycle commands from the control checkout: its .new-feature/manifest.toml owns
 the managed-feature records. The feature worktree is for implementation work.
 """
 
 _STATE_GUIDE = """\
 Managed state and safety:
-  - setup launches an agent in the current checkout to configure new-feature itself.
+  - setup adds generated-state and *.local.toml ignore rules, then launches an agent when selected.
   - install-codex-hook and install-claude-hook enforce the managed worktree workflow.
   - Worktrees live at .worktrees/SLUG and branches are named SLUG.
-  - .new-feature/ and .worktrees/ are automatically added to .gitignore.
+  - .new-feature/, .worktrees/, and *.local.toml are automatically added to .gitignore.
   - Setup failure triggers forced cleanup of the partial feature.
   - merge requires clean feature and target checkouts, rejects predicted conflicts, and aborts failed merges.
   - teardown refuses to discard dirty or unmerged work unless --force is supplied.
@@ -89,11 +107,15 @@ Run `new-feature COMMAND --help` for command-specific effects and examples.
 
 CREATE_DESCRIPTION = """\
 Create an isolated feature branch and worktree, allocate its configured environment,
-run project setup commands, and launch the configured interactive coding agent.
+run project setup commands, and optionally launch the selected interactive coding agent.
 
 The worktree is created at .worktrees/SLUG from the configured target branch. Runtime
 values are reserved in .new-feature/manifest.toml. If setup fails, new-feature attempts
 a forced teardown so a partial feature does not linger.
+
+When creation succeeds without launching an agent, new-feature prints the worktree's
+absolute path and a copy-pasteable `Next: cd -- ...` command. The path in that command
+is shell-quoted when necessary.
 """
 
 CREATE_EPILOG = f"""\
@@ -106,10 +128,11 @@ If you are already a coding agent, use --no-agent to prevent spawning another ag
 a subprocess. Setup still runs; then work inside .worktrees/SLUG yourself. --dry-run
 only prints proposed environment values and does not create or reserve anything.
 
+Without default_agent or --agent, creation stops after setup and does not launch an agent.
 The selected agent command is an argv prefix. new-feature appends its generated feature prompt as
 the final argument and launches the command in the worktree with the allocated environment.
-Use --agent NAME to select a configured agent, or --agent "COMMAND --FLAG" to run an executable
-command directly. For an agent requiring a prompt flag, use for example:
+Use --agent codex or --agent claude without configuration, a configured NAME, or an executable
+command directly. For a personal agent requiring a prompt flag, use in .new-feature.local.toml:
   default_agent = "custom"
   agents = {{ custom = ["custom-agent", "--prompt"] }}
 
@@ -117,14 +140,14 @@ command directly. For an agent requiring a prompt flag, use for example:
 
 SETUP_DESCRIPTION = """\
 Launch the configured coding agent in the current repository to set up or improve its
-new-feature integration.
+new-feature integration. With no default_agent, pass --agent codex or --agent claude.
 
 The agent starts by reading `new-feature --help` and inspecting the repository and any
-existing .new-feature.toml or [tool.new-feature] configuration. It proposes a
+existing .new-feature.toml, .new-feature.local.toml, or [tool.new-feature] configuration. It proposes a
 repository-specific plan, interviews you about unresolved choices, and asks whether to
-install the optional Codex or Claude Code hook before making changes.
-This command only launches the agent; it does not edit the repository, create a
-worktree, or install the hooks itself.
+install the optional Codex or Claude Code hook before making changes. The command ensures
+generated-state and *.local.toml ignore rules, then only launches the agent; it does not
+create a worktree or install the hooks itself.
 """
 
 INSTALL_CODEX_HOOK_DESCRIPTION = """\
@@ -162,7 +185,7 @@ This runs pre-merge commands in the feature worktree, requires both the feature 
 target checkouts to be clean, and rejects a conflicting merge before changing the target
 checkout. It then starts a no-commit merge and runs post-merge commands in the target
 checkout. The merge is committed only when all checks pass. It is pushed only when
-push = true in the project config. A failed merge or check is aborted.
+push = true in the resolved configuration. A failed merge or check is aborted.
 
 Run this command from the control checkout, not from the feature worktree.
 """

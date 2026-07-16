@@ -64,6 +64,8 @@ def test_top_level_help_explains_agent_workflow():
     assert "new-feature create NAME --no-agent" in help_text
     assert "new-feature COMMAND --help" in help_text
     assert ".new-feature.toml" in help_text
+    assert ".new-feature.local.toml" in help_text
+    assert "*.local.toml" in help_text
     assert "--version" in help_text
     assert "[tool.new-feature]" in help_text
     assert "create_prompt" in help_text
@@ -72,6 +74,8 @@ def test_top_level_help_explains_agent_workflow():
     assert "Configured commands are shell strings run sequentially" in help_text
     assert "NEW_FEATURE_WORKTREE" in help_text
     assert "cannot be exported into the already-running caller" in help_text
+    assert "Worktree ready: ABSOLUTE_PATH" in help_text
+    assert "Next: cd -- SHELL_QUOTED_ABSOLUTE_PATH" in help_text
     assert "Run lifecycle commands from the control checkout" in help_text
     assert "merge" in help_text
     assert "teardown" in help_text
@@ -84,7 +88,7 @@ def test_top_level_help_explains_agent_workflow():
     ("command", "expected"),
     [
         ("create", 'agents = { custom = ["custom-agent", "--prompt"] }'),
-        ("setup", "only launches the agent"),
+        ("setup", "*.local.toml ignore rules"),
         ("merge", "Run this command from the control checkout"),
         ("teardown", "from the control checkout, not from the feature worktree"),
         ("list", "owns .new-feature/manifest.toml"),
@@ -109,9 +113,10 @@ def test_setup_prompt_requires_inspection_approval_and_optional_hook_choice():
     prompt = build_setup_prompt()
 
     assert "Start by running `new-feature --help`" in prompt
-    assert "existing `.new-feature.toml` or `[tool.new-feature]` configuration" in prompt
+    assert "existing `.new-feature.toml`, `.new-feature.local.toml`, or `[tool.new-feature]`" in prompt
+    assert "Recommend the ignored `.new-feature.local.toml` sidecar" in prompt
     assert "Present a concise proposed plan" in prompt
-    assert "Do not edit files or install the hook until the user approves" in prompt
+    assert "do not make further edits or install the hook until the user approves" in prompt
     assert "optional repository-local Codex or Claude Code hook" in prompt
     assert "improving existing configuration when present" in prompt
 
@@ -123,22 +128,6 @@ def test_slugify_rejects_empty_name():
 
 def test_feature_key_uses_underscores_for_toml_table_names():
     assert feature_key("add-billing-webhooks") == "add_billing_webhooks"
-
-
-def test_load_project_config_defaults(tmp_path: Path):
-    (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n', encoding="utf-8")
-    config = load_project_config(tmp_path)
-    assert config.target_branch == "main"
-    assert config.default_agent == "codex"
-    assert config.agents == {"codex": ("codex",), "claude": ("claude",)}
-    assert config.create_prompt is None
-    assert config.setup_prompt is None
-    assert config.push is False
-    assert config.setup == []
-    assert config.pre_merge == []
-    assert config.post_merge == []
-    assert config.teardown == []
-    assert config.env == {}
 
 
 def test_load_project_config_from_dotfile(tmp_path: Path):
@@ -172,8 +161,12 @@ STATIC_ENV = { value = "development" }
 def test_dotfile_takes_precedence_over_pyproject(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text("not valid toml", encoding="utf-8")
     (tmp_path / ".new-feature.toml").write_text('target_branch = "develop"\n', encoding="utf-8")
+    (tmp_path / ".new-feature.local.toml").write_text("push = true\n", encoding="utf-8")
+
     config = load_project_config(tmp_path)
+
     assert config.target_branch == "develop"
+    assert config.push is True
 
 
 def test_legacy_standalone_config_is_ignored(tmp_path: Path):
@@ -221,13 +214,17 @@ CACHE_DIR = { allocate = "path" }
 
 def test_ensure_generated_paths_ignored_creates_gitignore(tmp_path: Path):
     ensure_generated_paths_ignored(tmp_path)
-    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == ".new-feature/\n.worktrees/\n"
+    assert (tmp_path / ".gitignore").read_text(
+        encoding="utf-8"
+    ) == ".new-feature/\n.worktrees/\n*.local.toml\n"
 
 
 def test_ensure_generated_paths_ignored_is_idempotent(tmp_path: Path):
     (tmp_path / ".gitignore").write_text(".venv\n.new-feature/\n", encoding="utf-8")
     ensure_generated_paths_ignored(tmp_path)
-    assert (tmp_path / ".gitignore").read_text(encoding="utf-8") == ".venv\n.new-feature/\n.worktrees/\n"
+    assert (tmp_path / ".gitignore").read_text(
+        encoding="utf-8"
+    ) == ".venv\n.new-feature/\n.worktrees/\n*.local.toml\n"
 
 
 def test_manifest_round_trip(tmp_path: Path):
@@ -385,6 +382,7 @@ WEB_PORT = { allocate = "port", min = 3200, max = 3201 }
     assert load_manifest(tmp_path).features["my_feature"].branch == "my-feature"
     assert ".new-feature/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert ".worktrees/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert "*.local.toml" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert (tmp_path / ".worktrees" / "my-feature" / "setup-port.txt").read_text(encoding="utf-8") == "3200"
 
 

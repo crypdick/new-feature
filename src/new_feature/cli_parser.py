@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     create = subparsers.add_parser(
         "create",
-        help="create a worktree and launch its coding agent",
+        help="create a worktree and optionally launch its coding agent",
         description=CREATE_DESCRIPTION,
         epilog=CREATE_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         "setup",
         help="launch an agent to configure new-feature for this repository",
         description=SETUP_DESCRIPTION,
-        epilog="Example:\n  new-feature setup",
+        epilog="Example:\n  new-feature setup --agent codex",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     setup.add_argument(

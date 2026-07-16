@@ -4,17 +4,10 @@ from __future__ import annotations
 
 import argparse  # noqa: TC003 - package-wide beartype needs annotation types at runtime
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from new_feature.agent import (
-    build_initial_prompt,
-    build_setup_prompt,
-    launch_interactive_agent,
-    resolve_agent,
-    resolve_prompt,
-)
+from new_feature import agent as agent_module
 from new_feature.agent_hook import TextStream, run_agent_hook
 from new_feature.allocator import allocate_env
 from new_feature.cli_parser import parse_args
@@ -39,16 +32,9 @@ from new_feature.lifecycle import now
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.recovery import repair_feature
 from new_feature.slug import feature_key, slugify
+from new_feature.worktree_guidance import build_worktree_ready_message
 
 _INTERNAL_HOOK_COMMANDS = frozenset({"codex-hook", "claude-hook"})
-
-
-@dataclass(frozen=True)
-class AgentLaunchOptions:
-    """Capture optional command-line overrides for agent selection and prompts."""
-
-    agent_override: str | None
-    prompt_override: str | None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -81,14 +67,14 @@ def _run(args: argparse.Namespace) -> int:
 
 def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "setup":
-        return _setup(root, agent_options=AgentLaunchOptions(args.agent, args.prompt))
+        return _setup(root, agent_options=agent_module.AgentLaunchOptions(args.agent, args.prompt))
     if args.command == "create":
         return _create(
             root,
             args.name,
             no_agent=args.no_agent,
             dry_run=args.dry_run,
-            agent_options=AgentLaunchOptions(args.agent, args.prompt),
+            agent_options=agent_module.AgentLaunchOptions(args.agent, args.prompt),
         )
     if args.command == "merge":
         return _merge(root, args.name)
@@ -101,10 +87,16 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     raise NewFeatureError(f"unknown command: {args.command}")
 
 
-def _setup(root: Path, *, agent_options: AgentLaunchOptions) -> int:
+def _setup(root: Path, *, agent_options: agent_module.AgentLaunchOptions) -> int:
     config = load_project_config(root)
-    prompt = resolve_prompt(build_setup_prompt(), config.setup_prompt, agent_options.prompt_override)
-    return launch_interactive_agent(resolve_agent(config, agent_options.agent_override), root, {}, prompt)
+    ensure_generated_paths_ignored(root)
+    agent_command = agent_module.resolve_agent(config, agent_options.agent_override)
+    if agent_command is None:
+        raise agent_module.agent_required_error(prompt_requested=agent_options.prompt_override is not None)
+    prompt = agent_module.resolve_prompt(
+        agent_module.build_setup_prompt(), config.setup_prompt, agent_options.prompt_override
+    )
+    return agent_module.launch_interactive_agent(agent_command, root, {}, prompt)
 
 
 def _create(
@@ -113,9 +105,12 @@ def _create(
     *,
     no_agent: bool,
     dry_run: bool,
-    agent_options: AgentLaunchOptions,
+    agent_options: agent_module.AgentLaunchOptions,
 ) -> int:
     config = load_project_config(root)
+    agent_command = None if no_agent else agent_module.resolve_agent(config, agent_options.agent_override)
+    if agent_command is None and agent_options.prompt_override is not None:
+        raise agent_module.agent_required_error(prompt_requested=True)
     slug = slugify(name)
     key = feature_key(slug)
     branch = slug
@@ -176,12 +171,13 @@ def _create(
                 f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
             ) from setup_error
         raise
-    if no_agent:
+    if agent_command is None:
+        print(build_worktree_ready_message(worktree))
         return 0
-    prompt = resolve_prompt(build_initial_prompt(slug), config.create_prompt, agent_options.prompt_override)
-    return launch_interactive_agent(
-        resolve_agent(config, agent_options.agent_override), worktree, env, prompt
+    prompt = agent_module.resolve_prompt(
+        agent_module.build_initial_prompt(slug), config.create_prompt, agent_options.prompt_override
     )
+    return agent_module.launch_interactive_agent(agent_command, worktree, env, prompt)
 
 
 def _merge(root: Path, name: str) -> int:

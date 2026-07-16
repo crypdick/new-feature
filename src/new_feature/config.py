@@ -37,6 +37,7 @@ _ALLOCATOR_KEYS = {
 }
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _NEW_FEATURE_TOML = ".new-feature.toml"
+_LOCAL_NEW_FEATURE_TOML = ".new-feature.local.toml"
 _PYPROJECT_TOML = "pyproject.toml"
 
 
@@ -98,7 +99,7 @@ class ProjectConfig:
     """Hold the normalized lifecycle configuration for one repository."""
 
     target_branch: str = "main"
-    default_agent: str = "codex"
+    default_agent: str | None = None
     agents: dict[str, AgentCommand] = field(default_factory=_default_agents)
     create_prompt: str | None = None
     setup_prompt: str | None = None
@@ -137,7 +138,7 @@ class _Parser:
             raise NewFeatureError(f"{self.config_path}.{name} must be a list of non-empty strings")
         return list(value)
 
-    def optional_prompt(self, name: str) -> str | None:
+    def optional_string(self, name: str) -> str | None:
         value = self.raw.get(name)
         if value is None:
             return None
@@ -306,19 +307,35 @@ def _env_fingerprint(spec: EnvSpec) -> dict[str, object]:
 
 
 def load_project_config(repo_root: Path) -> ProjectConfig:
-    """Load configuration, prioritizing a standalone file over ``pyproject.toml``."""
+    """Load shared configuration and then apply developer-local overrides."""
+    # NOTE: README.md documents standalone-file precedence and local override layering.
+    shared_raw, config_path, env_table = _load_shared_project_config(repo_root)
+    local_config = repo_root / _LOCAL_NEW_FEATURE_TOML
+    if not local_config.exists():
+        return _parse_project_config(shared_raw, config_path=config_path, env_table=env_table)
+
+    local_raw = _load_toml_document(local_config)
+    # Validate each source so a local setting cannot conceal a malformed shared setting.
+    # Parse the returned configuration only after raw merging, so defaults cannot overwrite it.
+    _parse_project_config(shared_raw, config_path=config_path, env_table=env_table)
+    _parse_project_config(local_raw, config_path=_LOCAL_NEW_FEATURE_TOML, env_table="[env]")
+    return _parse_project_config(
+        _merge_project_config_raw(shared_raw, local_raw),
+        config_path=_LOCAL_NEW_FEATURE_TOML,
+        env_table="[env]",
+    )
+
+
+def _load_shared_project_config(repo_root: Path) -> tuple[RawTable, str, str]:
+    """Return the selected shared configuration without applying defaults."""
     # NOTE: README.md documents standalone-file precedence over pyproject.toml.
     new_feature_toml = repo_root / _NEW_FEATURE_TOML
     if new_feature_toml.exists():
-        return _parse_project_config(
-            _load_toml_document(new_feature_toml),
-            config_path=_NEW_FEATURE_TOML,
-            env_table="[env]",
-        )
+        return _load_toml_document(new_feature_toml), _NEW_FEATURE_TOML, "[env]"
 
     pyproject = repo_root / _PYPROJECT_TOML
     if not pyproject.exists():
-        return ProjectConfig()
+        return {}, "tool.new-feature", "[tool.new-feature.env]"
     data = _load_toml_document(pyproject)
     tool_data = data.get("tool", {})
     if not isinstance(tool_data, dict):
@@ -326,11 +343,22 @@ def load_project_config(repo_root: Path) -> ProjectConfig:
     raw_data = tool_data.get("new-feature", {})
     if not isinstance(raw_data, dict):
         raise NewFeatureError("[tool.new-feature] must be a TOML table")
-    return _parse_project_config(
-        cast("RawTable", raw_data),
-        config_path="tool.new-feature",
-        env_table="[tool.new-feature.env]",
-    )
+    return cast("RawTable", raw_data), "tool.new-feature", "[tool.new-feature.env]"
+
+
+def _merge_project_config_raw(shared: RawTable, local: RawTable) -> RawTable:
+    """Overlay local raw settings, merging agent and environment entries by name."""
+    merged = {**shared, **local}
+    for table_name in ("agents", "env"):
+        shared_table = shared.get(table_name)
+        local_table = local.get(table_name)
+        if isinstance(shared_table, dict) and isinstance(local_table, dict):
+            # Environment specs deliberately remain atomic: only their containing table merges.
+            merged[table_name] = {
+                **cast("RawTable", shared_table),
+                **cast("RawTable", local_table),
+            }
+    return merged
 
 
 def _load_toml_document(path: Path) -> RawTable:
@@ -356,10 +384,10 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
     parser = _Parser(raw, config_path)
     return ProjectConfig(
         target_branch=parser.string("target_branch", "main"),
-        default_agent=parser.string("default_agent", "codex"),
+        default_agent=parser.optional_string("default_agent"),
         agents=parser.agents(),
-        create_prompt=parser.optional_prompt("create_prompt"),
-        setup_prompt=parser.optional_prompt("setup_prompt"),
+        create_prompt=parser.optional_string("create_prompt"),
+        setup_prompt=parser.optional_string("setup_prompt"),
         push=parser.boolean("push", default=False),
         setup=parser.string_list("setup"),
         pre_merge=parser.string_list("pre_merge"),

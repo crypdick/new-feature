@@ -257,11 +257,11 @@ def test_git_cleanliness_branch_ancestry_and_abort(tmp_path: Path) -> None:
 
 def test_gitignore_existing_complete_file_stays_unchanged(tmp_path: Path) -> None:
     gitignore = tmp_path / ".gitignore"
-    gitignore.write_text(".new-feature/\n.worktrees/\n", encoding="utf-8")
+    gitignore.write_text(".new-feature/\n.worktrees/\n*.local.toml\n", encoding="utf-8")
 
     ensure_generated_paths_ignored(tmp_path)
 
-    assert gitignore.read_text(encoding="utf-8") == ".new-feature/\n.worktrees/\n"
+    assert gitignore.read_text(encoding="utf-8") == ".new-feature/\n.worktrees/\n*.local.toml\n"
 
 
 def test_manifest_lock_creates_lock_directory(tmp_path: Path) -> None:
@@ -288,12 +288,17 @@ def test_create_dry_run_and_duplicate_detection(
     monkeypatch.chdir(tmp_path)
 
     assert main(["my-feature", "--dry-run"]) == 0
-    assert "NEW_FEATURE_BRANCH=my-feature" in capsys.readouterr().out
+    dry_run_output = capsys.readouterr().out
+    assert "NEW_FEATURE_BRANCH=my-feature" in dry_run_output
+    assert "Worktree ready:" not in dry_run_output
+    assert "Next: cd --" not in dry_run_output
     assert main(["my-feature", "--no-agent"]) == 0
     assert main(["my-feature", "--no-agent"]) == 1
 
 
-def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_launches_configured_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from tests.conftest import init_git_repo
 
     agent = tmp_path / "agent.py"
@@ -317,6 +322,9 @@ def test_create_launches_configured_agent(tmp_path: Path, monkeypatch: pytest.Mo
     assert main(["my-feature"]) == 0
     output = tmp_path / ".worktrees" / "my-feature" / "agent-ran.txt"
     assert output.read_text(encoding="utf-8") == "my-feature|--prompt|configured create prompt"
+    cli_output = capsys.readouterr().out
+    assert "Worktree ready:" not in cli_output
+    assert "Next: cd --" not in cli_output
 
 
 def test_create_launches_unconfigured_agent_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -338,7 +346,7 @@ def test_create_launches_unconfigured_agent_command(tmp_path: Path, monkeypatch:
     assert output.read_text(encoding="utf-8") == "--baz-flag|invocation prompt"
 
 
-def test_setup_launches_configured_agent_in_current_repo_without_lifecycle_writes(
+def test_setup_launches_configured_agent_and_initializes_ignore_rules(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from tests.conftest import init_git_repo
@@ -366,7 +374,9 @@ def test_setup_launches_configured_agent_in_current_repo_without_lifecycle_write
     assert output == "--prompt|configured setup prompt"
     assert not (tmp_path / ".new-feature").exists()
     assert not (tmp_path / ".worktrees").exists()
-    assert not (tmp_path / ".gitignore").exists()
+    assert (tmp_path / ".gitignore").read_text(
+        encoding="utf-8"
+    ) == ".new-feature/\n.worktrees/\n*.local.toml\n"
 
 
 def test_merge_rejects_dirty_worktree_and_aborts_failed_post_merge(
