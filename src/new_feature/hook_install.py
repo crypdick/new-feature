@@ -1,4 +1,9 @@
-"""Install repository-local agent worktree guards for Codex and Claude Code."""
+"""Install agent worktree guards for Codex and Claude Code.
+
+Guards are written under a caller-supplied base directory, so the same
+installers serve repository-local installs (base is the repository root) and
+user-level installs (base is the home directory).
+"""
 
 from __future__ import annotations
 
@@ -22,10 +27,10 @@ _CLAUDE_MARKERS = (
 )
 
 
-def install_codex_hook(repo_root: Path) -> Path:
+def install_codex_hook(base: Path) -> Path:
     """Install or update the Codex target-branch guard and return its configuration path."""
     return _install_guard(
-        repo_root / ".codex" / "hooks.json",
+        base / ".codex" / "hooks.json",
         _hook_group(
             matcher="Bash|Edit|Write|apply_patch",
             command="new-feature codex-hook",
@@ -35,10 +40,15 @@ def install_codex_hook(repo_root: Path) -> Path:
     )
 
 
-def install_claude_hook(repo_root: Path) -> Path:
-    """Install or update the Claude Code target-branch guard and return its settings path."""
+def install_claude_hook(base: Path, *, local: bool = False) -> Path:
+    """Install or update the Claude Code target-branch guard and return its settings path.
+
+    With ``local`` the guard lands in ``settings.local.json``, Claude Code's
+    personal (gitignored) settings file, instead of the shared ``settings.json``.
+    """
+    filename = "settings.local.json" if local else "settings.json"
     return _install_guard(
-        repo_root / ".claude" / "settings.json",
+        base / ".claude" / filename,
         _hook_group(
             matcher="Bash|Edit|Write|MultiEdit|NotebookEdit",
             command="new-feature claude-hook",

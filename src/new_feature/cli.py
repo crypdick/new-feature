@@ -35,6 +35,7 @@ from new_feature.slug import feature_key, slugify
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
 
 _INTERNAL_HOOK_COMMANDS = frozenset({"codex-hook", "claude-hook"})
+_INSTALL_HOOK_COMMANDS = frozenset({"install-codex-hook", "install-claude-hook"})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,18 +52,24 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    root = repo_root(Path.cwd())
+    if args.command in _INSTALL_HOOK_COMMANDS:
+        return _install_hook(args)
+    return _dispatch(args, repo_root(Path.cwd()))
+
+
+def _install_hook(args: argparse.Namespace) -> int:
+    base = Path.home() if args.global_scope else repo_root(Path.cwd())
     if args.command == "install-codex-hook":
-        path = install_codex_hook(root)
+        path = install_codex_hook(base)
         print(f"Installed Codex target-branch guard in {path}")
         print("Restart Codex, then review and trust the hook with /hooks.")
-        return 0
-    if args.command == "install-claude-hook":
-        path = install_claude_hook(root)
+    else:
+        path = install_claude_hook(base, local=args.local_scope)
         print(f"Installed Claude Code target-branch guard in {path}")
         print("Restart Claude Code so the session reloads its hooks, then review them with /hooks.")
-        return 0
-    return _dispatch(args, root)
+    if args.global_scope:
+        print("The guard now applies to every repository on this machine.")
+    return 0
 
 
 def _dispatch(args: argparse.Namespace, root: Path) -> int:

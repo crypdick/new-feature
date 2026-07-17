@@ -151,12 +151,16 @@ create a worktree or install the hooks itself.
 """
 
 INSTALL_CODEX_HOOK_DESCRIPTION = """\
-Install or update the repository-local Codex PreToolUse guard in .codex/hooks.json.
+Install or update the Codex PreToolUse guard in .codex/hooks.json.
 
 The guard denies Codex direct Write, Edit, and apply_patch operations on the configured
 target branch. It also denies raw `git worktree add` and `git worktree remove` commands
 so Codex uses the managed new-feature lifecycle. Unrelated repository hooks are
 preserved, while an installed new-feature or legacy worktree guard is replaced.
+
+By default the guard is installed in the current repository. With --global it is
+installed in ~/.codex/hooks.json instead and covers every repository on this machine;
+the guard allows any operation outside a new-feature-managed repository.
 
 The hook runs `new-feature codex-hook`, so new-feature must remain available on PATH.
 Codex applies repository hooks only after the repository is trusted. Restart Codex after
@@ -164,14 +168,18 @@ installation, then use `/hooks` to review and trust the guard.
 """
 
 INSTALL_CLAUDE_HOOK_DESCRIPTION = """\
-Install or update the repository-local Claude Code PreToolUse guard in
-.claude/settings.json.
+Install or update the Claude Code PreToolUse guard in .claude/settings.json.
 
 The guard denies Claude Code direct Write, Edit, MultiEdit, and NotebookEdit operations
 on the configured target branch. It also denies raw `git worktree add` and
 `git worktree remove` commands so Claude Code uses the managed new-feature lifecycle.
 Unrelated settings and hooks are preserved, while an installed new-feature guard is
 replaced.
+
+By default the guard is installed in the current repository's shared settings. With
+--local it goes to .claude/settings.local.json, the personal gitignored settings file.
+With --global it goes to ~/.claude/settings.json instead and covers every repository on
+this machine; the guard allows any operation outside a new-feature-managed repository.
 
 The hook runs `new-feature claude-hook`, so new-feature must remain available on PATH.
 Claude Code loads hooks at session start, so restart Claude Code after installation and

@@ -148,27 +148,49 @@ def build_parser() -> argparse.ArgumentParser:
 
     install_codex = subparsers.add_parser(
         "install-codex-hook",
-        help="install the repository-local Codex worktree guard",
+        help="install the Codex worktree guard for this repository or globally",
         description=INSTALL_CODEX_HOOK_DESCRIPTION,
         epilog=(
-            "Example:\n"
-            "  new-feature install-codex-hook\n\n"
+            "Examples:\n"
+            "  new-feature install-codex-hook\n"
+            "  new-feature install-codex-hook --global\n\n"
             "After installation, restart Codex and use `/hooks` to review and trust it."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    install_codex.set_defaults(command="install-codex-hook")
+    install_codex.add_argument(
+        "--global",
+        dest="global_scope",
+        action="store_true",
+        help="install into ~/.codex/hooks.json so the guard covers every repository on this machine",
+    )
+    install_codex.set_defaults(command="install-codex-hook", local_scope=False)
 
     install_claude = subparsers.add_parser(
         "install-claude-hook",
-        help="install the repository-local Claude Code worktree guard",
+        help="install the Claude Code worktree guard for this repository or globally",
         description=INSTALL_CLAUDE_HOOK_DESCRIPTION,
         epilog=(
-            "Example:\n"
-            "  new-feature install-claude-hook\n\n"
+            "Examples:\n"
+            "  new-feature install-claude-hook\n"
+            "  new-feature install-claude-hook --local\n"
+            "  new-feature install-claude-hook --global\n\n"
             "After installation, restart Claude Code so the session reloads its hooks."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    claude_scope = install_claude.add_mutually_exclusive_group()
+    claude_scope.add_argument(
+        "--global",
+        dest="global_scope",
+        action="store_true",
+        help="install into ~/.claude/settings.json so the guard covers every repository on this machine",
+    )
+    claude_scope.add_argument(
+        "--local",
+        dest="local_scope",
+        action="store_true",
+        help="install into .claude/settings.local.json, the personal gitignored settings file",
     )
     install_claude.set_defaults(command="install-claude-hook")
 
