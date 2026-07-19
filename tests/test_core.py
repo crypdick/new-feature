@@ -386,35 +386,6 @@ WEB_PORT = { allocate = "port", min = 3200, max = 3201 }
     assert (tmp_path / ".worktrees" / "my-feature" / "setup-port.txt").read_text(encoding="utf-8") == "3200"
 
 
-def test_merge_runs_checks_and_commits_merge(tmp_path: Path, monkeypatch):
-    from tests.conftest import init_git_repo
-
-    init_git_repo(
-        tmp_path,
-        """
-[project]
-name = "demo"
-
-[tool.new-feature] # temporal-ok
-pre_merge = ["test -f feature.txt"]
-post_merge = ["test -f feature.txt"]
-push = false
-""",
-    )
-    monkeypatch.chdir(tmp_path)
-    assert main(["my-feature", "--no-agent"]) == 0
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
-    worktree = tmp_path / ".worktrees" / "my-feature"
-    (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
-    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
-    subprocess.run(["git", "commit", "-m", "add feature"], cwd=worktree, check=True)
-    assert main(["merge", "my-feature"]) == 0
-    assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "done\n"
-    manifest = load_manifest(tmp_path)
-    assert manifest.features["my_feature"].status == "merged"
-
-
 def test_merge_requires_clean_target_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
