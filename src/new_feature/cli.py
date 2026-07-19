@@ -32,7 +32,7 @@ from new_feature.lifecycle import now
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.recovery import repair_feature
 from new_feature.slug import feature_key, slugify
-from new_feature.worktree_guidance import build_worktree_ready_message
+from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
 
 _INTERNAL_HOOK_COMMANDS = frozenset({"codex-hook", "claude-hook"})
 
@@ -212,6 +212,7 @@ def _merge(root: Path, name: str) -> int:
         record.status = "merged"
         record.merged_at = now()
         save_manifest(root, manifest)
+    print(build_teardown_reminder(record.slug))
     return 0
 
 

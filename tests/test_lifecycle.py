@@ -84,6 +84,41 @@ def test_merge_rejects_conflicts_before_changing_the_target_checkout(
     assert load_manifest(tmp_path).features["my_feature"].status == "active"
 
 
+def test_merge_runs_checks_commits_and_prints_teardown_reminder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(
+        tmp_path,
+        """
+[project]
+name = "demo"
+
+[tool.new-feature] # temporal-ok
+pre_merge = ["test -f feature.txt"]
+post_merge = ["test -f feature.txt"]
+push = false
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "add feature"], cwd=worktree, check=True)
+    capsys.readouterr()
+
+    assert main(["merge", "my-feature"]) == 0
+    assert capsys.readouterr().out == (
+        "Feature merged. Remember to `new-feature teardown my-feature` when you are done with the worktree.\n"
+    )
+    assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "done\n"
+    assert load_manifest(tmp_path).features["my_feature"].status == "merged"
+
+
 def test_teardown_reports_a_missing_worktree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
