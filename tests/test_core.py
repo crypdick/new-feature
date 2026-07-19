@@ -57,6 +57,12 @@ def test_parser_accepts_teardown_force_command():
     assert args.force is True
 
 
+def test_status_is_an_alias_for_list():
+    args = parse_args(["status"])
+
+    assert args.command == "list"
+
+
 def test_top_level_help_explains_agent_workflow():
     help_text = build_parser().format_help()
 

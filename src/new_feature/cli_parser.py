@@ -24,6 +24,7 @@ _COMMANDS = frozenset({
     "merge",
     "teardown",
     "list",
+    "status",
     "doctor",
     "install-codex-hook",
     "install-claude-hook",
@@ -124,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     feature_list = subparsers.add_parser(
         "list",
+        aliases=["status"],
         help="show managed features and their current state",
         description=LIST_DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
