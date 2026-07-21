@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from new_feature.hook_policy import (
     EditRequest,
@@ -8,6 +8,9 @@ from new_feature.hook_policy import (
     WorktreeRequest,
     evaluate_worktree_policy,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_policy_denies_a_normalized_target_branch_edit(tmp_path: Path) -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -10,6 +10,9 @@ from new_feature.cli import main
 from new_feature.errors import NewFeatureError
 from new_feature.git import remove_worktree_and_branch
 from new_feature.manifest import load_manifest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_remove_worktree_and_branch_recovers_when_git_removes_only_the_directory(
@@ -80,7 +83,7 @@ def test_merge_rejects_conflicts_before_changing_the_target_checkout(
         subprocess.run(["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=tmp_path, check=False).returncode
         != 0
     )
-    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True) == ""
+    assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True)
     assert load_manifest(tmp_path).features["my_feature"].status == "active"
 
 
@@ -150,4 +153,4 @@ def test_doctor_repair_removes_a_missing_worktree_with_a_merged_branch(
     assert "removed missing worktree and merged branch my-feature" in capsys.readouterr().out
     assert load_manifest(tmp_path).features == {}
     branches = subprocess.check_output(["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True)
-    assert branches.strip() == ""
+    assert not branches.strip()

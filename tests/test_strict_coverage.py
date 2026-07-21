@@ -3,7 +3,7 @@ from __future__ import annotations
 import runpy
 import subprocess
 import sys
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -31,6 +31,9 @@ from new_feature.git import (
 from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.manifest import FeatureRecord, Manifest, load_manifest, manifest_lock
 from new_feature.slug import slugify
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_module_entrypoint_exits_with_cli_code(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -180,7 +183,7 @@ def test_config_validation_errors(tmp_path: Path) -> None:
         load_project_config(tmp_path)
 
     (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\nenv = "bad"\n', encoding="utf-8")
-    with pytest.raises(NewFeatureError, match="env.*must be a TOML table"):
+    with pytest.raises(NewFeatureError, match=r"env.*must be a TOML table"):
         load_project_config(tmp_path)
 
     (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\nsetup = "uv sync"\n', encoding="utf-8")
@@ -206,13 +209,13 @@ def test_config_validation_errors(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         "[tool.new-feature]\nagents = { codex = [] }\n", encoding="utf-8"
     )
-    with pytest.raises(NewFeatureError, match="agents.codex must be a non-empty list"):
+    with pytest.raises(NewFeatureError, match=r"agents\.codex must be a non-empty list"):
         load_project_config(tmp_path)
 
     (tmp_path / "pyproject.toml").write_text(
         "[tool.new-feature]\nagents = { codex = [1] }\n", encoding="utf-8"
     )
-    with pytest.raises(NewFeatureError, match="agents.codex must be a non-empty list"):
+    with pytest.raises(NewFeatureError, match=r"agents\.codex must be a non-empty list"):
         load_project_config(tmp_path)
 
     (tmp_path / "pyproject.toml").write_text(

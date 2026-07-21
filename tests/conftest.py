@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Iterator
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def init_git_repo(path: Path, pyproject: str | None = None) -> None:
@@ -21,7 +23,6 @@ def init_git_repo(path: Path, pyproject: str | None = None) -> None:
 
 
 @pytest.fixture(autouse=True)
-def clean_git_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def clean_git_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
         monkeypatch.delenv(key, raising=False)
-    yield

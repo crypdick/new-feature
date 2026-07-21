@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-commit hook to forbid tests from importing private first-party symbols.
+"""Prek hook to forbid tests from importing private first-party symbols.
 
 Philosophy: tests should verify *public behaviour*, not private implementation
 shape. Importing a leading-underscore name from a first-party package into a

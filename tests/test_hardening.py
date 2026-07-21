@@ -61,9 +61,7 @@ def test_setup_failure_forces_teardown(
     assert "Worktree ready:" not in output
     assert "Next: cd --" not in output
     assert not (tmp_path / ".worktrees" / "broken").exists()
-    assert (
-        subprocess.check_output(["git", "branch", "--list", "broken"], cwd=tmp_path, text=True).strip() == ""
-    )
+    assert not subprocess.check_output(["git", "branch", "--list", "broken"], cwd=tmp_path, text=True).strip()
     assert load_manifest(tmp_path).features == {}
 
 
@@ -332,31 +330,41 @@ def test_manifest_reports_invalid_toml(tmp_path: Path) -> None:
         ('version = "two"\n', "version must be an integer"),
         ("features = []\n", "features must be a TOML table"),
         (
-            '[features.demo]\nname = 1\nslug = "demo"\nbranch = "demo"\n'
-            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n',
+            (
+                '[features.demo]\nname = 1\nslug = "demo"\nbranch = "demo"\n'
+                'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
+            ),
             "demo.name must be a non-empty string",
         ),
         (
-            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
-            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "paused"\n',
+            (
+                '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+                'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "paused"\n'
+            ),
             "demo.status must be active or merged",
         ),
         (
-            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
-            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
-            "env = { PORT = 3000 }\n",
+            (
+                '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+                'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
+                "env = { PORT = 3000 }\n"
+            ),
             "env values must be strings",
         ),
         (
-            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
-            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
-            "created_at = 1\n",
+            (
+                '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+                'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
+                "created_at = 1\n"
+            ),
             "created_at must be a string",
         ),
         (
-            '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
-            'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
-            'mystery = "value"\n',
+            (
+                '[features.demo]\nname = "demo"\nslug = "demo"\nbranch = "demo"\n'
+                'worktree = ".worktrees/demo"\ntarget_branch = "main"\nstatus = "active"\n'
+                'mystery = "value"\n'
+            ),
             "unsupported fields: mystery",
         ),
     ],
@@ -413,5 +421,5 @@ def test_release_workflow_requires_quality_gate_before_build() -> None:
     workflow = Path(".github/workflows/publish.yml").read_text(encoding="utf-8")
 
     assert "quality:" in workflow
-    assert "uv run pre-commit run --all-files" in workflow
+    assert "uv run prek run --all-files" in workflow
     assert "needs: [prepare, quality]" in workflow

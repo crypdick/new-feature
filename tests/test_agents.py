@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from importlib.metadata import version
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,6 +11,9 @@ from new_feature.cli import main
 from new_feature.cli_parser import parse_args
 from new_feature.config import ProjectConfig, load_project_config
 from new_feature.errors import NewFeatureError
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_parser_accepts_agent_and_prompt_overrides() -> None:
