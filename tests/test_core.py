@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import socket
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
 from new_feature.agent import build_initial_prompt, build_setup_prompt
 from new_feature.allocator import allocate_env
 from new_feature.cli import main
@@ -25,6 +26,9 @@ from new_feature.git import create_worktree, remove_worktree_and_branch
 from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.manifest import FeatureRecord, Manifest, load_manifest, save_manifest
 from new_feature.slug import feature_key, slugify
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_bare_feature_name_is_create_command():
@@ -354,7 +358,7 @@ def test_remove_worktree_and_branch_deletes_both(tmp_path: Path):
     branches = subprocess.check_output(
         ["git", "branch", "--list", "feature/my-feature"], cwd=tmp_path, text=True
     )
-    assert branches.strip() == ""
+    assert not branches.strip()
 
 
 def test_initial_prompt_is_prd_interview_with_fast_path():
@@ -464,4 +468,4 @@ teardown = ["printf torn-down > teardown.txt"]
     manifest = load_manifest(tmp_path)
     assert "my_feature" not in manifest.features
     branches = subprocess.check_output(["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True)
-    assert branches.strip() == ""
+    assert not branches.strip()

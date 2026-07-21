@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from new_feature.config import LiteralEnvSpec, SlugEnvSpec, load_project_config
 from new_feature.errors import NewFeatureError
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_load_project_config_defaults(tmp_path: Path):
@@ -130,5 +133,5 @@ def test_local_config_cannot_mask_an_invalid_shared_setting(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text('[tool.new-feature]\npush = "not a boolean"\n', encoding="utf-8")
     (tmp_path / ".new-feature.local.toml").write_text("push = true\n", encoding="utf-8")
 
-    with pytest.raises(NewFeatureError, match="tool.new-feature.push must be a boolean"):
+    with pytest.raises(NewFeatureError, match=r"tool\.new-feature\.push must be a boolean"):
         load_project_config(tmp_path)

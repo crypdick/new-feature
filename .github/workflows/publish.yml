@@ -32,9 +32,9 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --all-groups
 
-      # NOTE: docs/QUALITY.md identifies pre-commit as the canonical aggregate quality gate.
+      # NOTE: docs/QUALITY.md identifies prek as the canonical aggregate quality gate.
       - name: Run all quality gates
-        run: uv run pre-commit run --all-files
+        run: uv run prek run --all-files
 
   prepare:
     name: Detect version change

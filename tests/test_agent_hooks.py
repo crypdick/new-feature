@@ -3,16 +3,19 @@ from __future__ import annotations
 import io
 import json
 import subprocess
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from new_feature import cli
 from new_feature import atomic_file as atomic_file_module
+from new_feature import cli
 from new_feature import hook_policy as hook_policy_module
 from new_feature.agent_hook import run_agent_hook
 from new_feature.errors import NewFeatureError
 from new_feature.hook_install import install_claude_hook, install_codex_hook
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _payload(path: Path, *, tool_name: str = "apply_patch") -> io.StringIO:
@@ -99,7 +102,7 @@ def test_hook_supports_legacy_edit_payload_and_ignores_unrelated_input(tmp_path:
     for raw in ("not json", "[]", json.dumps({"tool_name": "mcp__filesystem__read_file"})):
         output = io.StringIO()
         assert run_agent_hook(io.StringIO(raw), output, cwd=tmp_path) == 0
-        assert output.getvalue() == ""
+        assert not output.getvalue()
 
     malformed_edit = io.StringIO(json.dumps({"tool_name": "Write", "tool_input": []}))
     assert run_agent_hook(malformed_edit, io.StringIO(), cwd=tmp_path) == 0
@@ -217,7 +220,7 @@ def test_hook_accepts_cmd_alias_and_ignores_malformed_bash_input(tmp_path: Path)
     output = io.StringIO()
     payload = io.StringIO(json.dumps({"tool_name": "Bash", "tool_input": []}))
     assert run_agent_hook(payload, output, cwd=tmp_path) == 0
-    assert output.getvalue() == ""
+    assert not output.getvalue()
 
 
 def test_hook_handles_nested_patch_input_empty_targets_and_detached_head(tmp_path: Path) -> None:
@@ -475,4 +478,4 @@ def test_internal_hook_commands_run_without_repository(
     monkeypatch.setattr(cli.sys, "stdout", output)
 
     assert cli.main([command]) == 0
-    assert output.getvalue() == ""
+    assert not output.getvalue()

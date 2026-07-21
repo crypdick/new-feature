@@ -1,0 +1,157 @@
+minimum_prek_version = "0.3.2"
+default_language_version.python = "python3"
+
+# Native prek hygiene hooks. These need no network access or managed environment.
+[[repos]]
+repo = "builtin"
+hooks = [
+    {id = "trailing-whitespace"},
+    {id = "end-of-file-fixer"},
+    {id = "check-json"},
+    {id = "check-toml"},
+    {id = "check-yaml"},
+    {id = "check-merge-conflict"},
+    {id = "detect-private-key"},
+    {id = "check-added-large-files"},
+    {id = "check-case-conflict"},
+    {id = "check-symlinks"},
+    {id = "destroyed-symlinks"},
+    {id = "fix-byte-order-marker"},
+    {id = "mixed-line-ending"},
+    {id = "check-executables-have-shebangs"},
+    {id = "check-shebang-scripts-are-executable"},
+]
+
+[[repos]]
+repo = "https://github.com/Yelp/detect-secrets"
+rev = "v1.5.0"
+hooks = [
+    {id = "detect-secrets", args = ["--baseline", ".secrets.baseline"], exclude = "uv\\.lock"},
+]
+
+[[repos]]
+repo = "https://github.com/jendrikseipp/vulture"
+rev = "v2.14"
+hooks = [
+    {id = "vulture", args = ["src", "tests", "--min-confidence", "80"]},
+]
+
+[[repos]]
+repo = "https://github.com/asottile/pyupgrade"
+rev = "v3.21.2"
+hooks = [
+    {id = "pyupgrade", args = ["--py313-plus"]},
+]
+
+[[repos]]
+repo = "https://github.com/ikamensh/flynt"
+rev = "1.0.6"
+hooks = [
+    {id = "flynt"},
+]
+
+[[repos]]
+repo = "https://github.com/henryiii/validate-pyproject-schema-store"
+rev = "2026.07.08"
+hooks = [
+    {id = "validate-pyproject"},
+]
+
+[[repos]]
+repo = "https://github.com/henryiii/check-sdist"
+rev = "v1.5.0"
+hooks = [
+    {id = "check-sdist-isolated", args = ["--inject-junk"]},
+]
+
+# Project-local checks, ordered from cheap static checks to the full test suite.
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "ruff-check"
+name = "Ruff check"
+entry = "uv run ruff check --fix --quiet"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "Ruff format"
+entry = "uv run ruff format --quiet"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "deptry"
+name = "deptry"
+entry = "uv run deptry ."
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "mypy"
+name = "mypy"
+entry = "uv run mypy src tests scripts"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "check-exception-handling"
+name = "Check exception handling"
+entry = "python scripts/prek_hooks/check_exception_handling.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-print-statements"
+name = "Check print statements"
+entry = "python scripts/prek_hooks/check_print_statements.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-timeless-comments"
+name = "Check timeless comments"
+entry = "python scripts/prek_hooks/check_timeless_comments.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-file-length"
+name = "Check file length"
+entry = "python scripts/prek_hooks/check_file_length.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "check-private-test-imports"
+name = "Forbid private imports in tests"
+entry = "python scripts/prek_hooks/check_private_test_imports.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "fix-future-annotations"
+name = "Fix future annotations"
+entry = "python scripts/prek_hooks/fix_future_annotations.py"
+language = "system"
+types = ["python"]
+
+[[repos.hooks]]
+id = "pytest"
+name = "pytest"
+entry = "uv run pytest"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "mkdocs"
+name = "MkDocs"
+entry = "uv run mkdocs build --strict"
+language = "system"
+pass_filenames = false
+always_run = true

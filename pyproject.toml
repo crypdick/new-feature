@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "new-feature"
 # Do not edit directly; use `uv version --bump patch` instead.
-version = "1.1.10"
+version = "1.1.11"
 description = "Create isolated feature worktrees with allocated runtime environments."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -36,26 +36,48 @@ Source = "https://github.com/crypdick/new-feature"
 [project.scripts]
 new-feature = "new_feature.app:main"
 
-[tool.hatch.build.targets.sdist]
-include = [
-    "/pyproject.toml",
-    "/README.md",
-    "/src/new_feature",
-]
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/new_feature"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.coverage",
+    "/.mypy_cache",
+    "/.pytest_cache",
+    "/.ruff_cache",
+    "/.venv",
+    "/.worktrees",
+    "/build",
+    "/dist",
+    "/htmlcov",
+    "/site",
+    "/wheels",
+    "**/__pycache__",
+    "**/*.egg-info",
+    "**/*.egg-info/**",
+    "**/*.py[oc]",
+    "*.local.toml",
+    ".DS_Store*",
+    ".Spotlight-V100",
+    ".Trashes",
+    "._*",
+    "Thumbs.db",
+    "ehthumbs.db",
+    "*.swp",
+    "*~",
+]
 
 [tool.new-feature]
 target_branch = "main"
 setup = ["uv sync --locked --all-groups"]
-pre_merge = ["uv run pre-commit run --all-files"]
-post_merge = ["uv run pre-commit run --all-files"]
+pre_merge = ["uv run prek run --all-files"]
+post_merge = ["uv run prek run --all-files"]
 teardown = []
 
 [dependency-groups]
 dev = [
     "coverage>=7.15.0",
+    "deptry>=0.25.1",
     "detect-secrets>=1.5.0",
     "flynt>=1.0.6",
     "mkdocs>=1.6.1",
@@ -63,7 +85,7 @@ dev = [
     "mkdocs-material>=9.7.6",
     "mkdocstrings[python]>=1.0.6",
     "mypy>=2.2.0",
-    "pre-commit>=4.6.0",
+    "prek>=0.3.2",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
@@ -186,7 +208,22 @@ max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "src/new_feature/__init__.py" = ["RUF067"]
-"tests/**/*.py" = ["ALL"]
+"tests/**/*.py" = [
+    "ANN",
+    "ARG",
+    "C901",
+    "FBT",
+    "F841",
+    "PLC0415",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "S101",
+    "S404",
+    "S603",
+    "S607",
+    "SLF",
+]
 "scripts/**/*.py" = ["C901", "PLR0912", "PLR0915", "S603", "S607", "T20"]
 "src/new_feature/agent.py" = ["S404", "S603", "TC001", "TC003"]
 "src/new_feature/allocator.py" = ["PLR0913", "TC001"]
@@ -241,8 +278,7 @@ omit = [
 fail_under = 100
 show_missing = true
 skip_empty = true
-exclude_lines = [
-    "pragma: no cover",
+exclude_also = [
     "def __repr__",
     "raise AssertionError",
     "raise NotImplementedError",
@@ -256,3 +292,8 @@ exclude_lines = [
 min_confidence = 80
 exclude = [".venv/"]
 paths = ["src", "tests"]
+
+[tool.deptry]
+extend_exclude = ["scripts/prek_hooks"]
+known_first_party = ["new_feature"]
+per_rule_ignores = { DEP004 = ["mkdocs_gen_files"] }
