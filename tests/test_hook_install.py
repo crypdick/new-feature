@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from new_feature import cli
 from new_feature import atomic_file as atomic_file_module
+from new_feature import cli
 from new_feature.errors import NewFeatureError
 from new_feature.hook_install import install_claude_hook, install_codex_hook
 
