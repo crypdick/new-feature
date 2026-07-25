@@ -111,7 +111,8 @@ run project setup commands, and optionally launch the selected interactive codin
 
 The worktree is created at .worktrees/SLUG from the configured target branch. Runtime
 values are reserved in .new-feature/manifest.toml. If setup fails, new-feature attempts
-a forced teardown so a partial feature does not linger.
+a forced teardown so a partial feature does not linger. Repeating create for an active
+feature reuses its worktree and environment without rerunning setup.
 
 When creation succeeds without launching an agent, new-feature prints the worktree's
 absolute path and a copy-pasteable `Next: cd -- ...` command. The path in that command
@@ -125,8 +126,10 @@ Examples:
   new-feature create billing-webhooks --dry-run
 
 If you are already a coding agent, use --no-agent to prevent spawning another agent in
-a subprocess. Setup still runs; then work inside .worktrees/SLUG yourself. --dry-run
-only prints proposed environment values and does not create or reserve anything.
+a subprocess. Setup still runs for a new feature; then work inside .worktrees/SLUG yourself.
+For an existing active feature, creation skips setup and reopens the existing worktree.
+--dry-run prints proposed values for a new feature or recorded values for an existing
+feature, and does not create or reserve anything.
 
 Without default_agent or --agent, creation stops after setup and does not launch an agent.
 The selected agent command is an argv prefix. new-feature appends its generated feature prompt as

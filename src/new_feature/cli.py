@@ -18,6 +18,7 @@ from new_feature.feature_state import inspect_feature
 from new_feature.git import (
     abort_merge,
     begin_merge_without_commit,
+    branch_exists,
     commit_merge,
     create_worktree,
     is_branch_merged,
@@ -125,66 +126,101 @@ def _create(
 
     if dry_run:
         manifest = load_manifest(root)
-        if key in manifest.features:
-            raise NewFeatureError(f"feature already exists: {slug}")
-        env = allocate_env(
-            config=config,
-            manifest=manifest,
-            name=name,
-            slug=slug,
-            branch=branch,
-            worktree=worktree,
-            repo_root=root,
-        )
+        record = manifest.features.get(key)
+        if record is None:
+            env = allocate_env(
+                config=config,
+                manifest=manifest,
+                name=name,
+                slug=slug,
+                branch=branch,
+                worktree=worktree,
+                repo_root=root,
+            )
+        else:
+            _reusable_feature_worktree(root, record)
+            env = record.env
         for env_key, env_value in sorted(env.items()):
             print(f"{env_key}={env_value}")
         return 0
 
     ensure_generated_paths_ignored(root)
+    created = False
     with manifest_lock(root):
         manifest = load_manifest(root)
-        if key in manifest.features:
-            raise NewFeatureError(f"feature already exists: {slug}")
-        env = allocate_env(
-            config=config,
-            manifest=manifest,
-            name=name,
-            slug=slug,
-            branch=branch,
-            worktree=worktree,
-            repo_root=root,
-        )
-        create_worktree(root, branch=branch, worktree=worktree, target_branch=config.target_branch)
-        manifest.features[key] = FeatureRecord(
-            name=name,
-            slug=slug,
-            branch=branch,
-            worktree=str(worktree.relative_to(root)),
-            target_branch=config.target_branch,
-            status="active",
-            created_at=now(),
-            config_fingerprint=config_fingerprint(config),
-            env=env,
-        )
-        save_manifest(root, manifest)
+        record = manifest.features.get(key)
+        if record is None:
+            env = allocate_env(
+                config=config,
+                manifest=manifest,
+                name=name,
+                slug=slug,
+                branch=branch,
+                worktree=worktree,
+                repo_root=root,
+            )
+            create_worktree(root, branch=branch, worktree=worktree, target_branch=config.target_branch)
+            record = FeatureRecord(
+                name=name,
+                slug=slug,
+                branch=branch,
+                worktree=str(worktree.relative_to(root)),
+                target_branch=config.target_branch,
+                status="active",
+                created_at=now(),
+                config_fingerprint=config_fingerprint(config),
+                env=env,
+            )
+            manifest.features[key] = record
+            save_manifest(root, manifest)
+            created = True
+        else:
+            worktree = _reusable_feature_worktree(root, record)
+            env = record.env
 
-    try:
-        run_commands(config.setup, cwd=worktree, env=env)
-    except NewFeatureError as setup_error:
+    if created:
         try:
-            _teardown(root, slug, force=True)
-        except NewFeatureError as teardown_error:
-            raise NewFeatureError(
-                f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
-            ) from setup_error
-        raise
+            run_commands(config.setup, cwd=worktree, env=env)
+        except NewFeatureError as setup_error:
+            try:
+                _teardown(root, slug, force=True)
+            except NewFeatureError as teardown_error:
+                raise NewFeatureError(
+                    f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
+                ) from setup_error
+            raise
+    else:
+        _warn_if_config_changed(config, record)
     if agent_command is None:
         print(build_worktree_ready_message(worktree))
         return 0
     prompt = agent_module.resolve_prompt(
-        agent_module.build_initial_prompt(slug), config.create_prompt, agent_options.prompt_override
+        agent_module.build_initial_prompt(record.slug), config.create_prompt, agent_options.prompt_override
     )
     return agent_module.launch_interactive_agent(agent_command, worktree, env, prompt)
+
+
+def _reusable_feature_worktree(root: Path, record: FeatureRecord) -> Path:
+    """Return an existing active feature's worktree or explain why it cannot be reopened."""
+    if record.status != "active":
+        raise NewFeatureError(
+            f"feature has already been merged: {record.slug}; "
+            f"run `new-feature teardown {record.slug}` before creating it again"
+        )
+
+    worktree = root / record.worktree
+    issues: list[str] = []
+    if not worktree.is_dir():
+        issues.append("missing worktree")
+    if not branch_exists(root, record.branch):
+        issues.append("missing branch")
+    if issues:
+        detail = " and ".join(issues)
+        raise NewFeatureError(
+            f"feature cannot be reopened: {record.slug} ({detail}); "
+            "run `new-feature doctor --repair` before retrying"
+        )
+    return worktree
 
 
 def _merge(root: Path, name: str) -> int:

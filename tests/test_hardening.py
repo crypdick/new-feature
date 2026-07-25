@@ -35,14 +35,65 @@ def test_dry_run_has_no_filesystem_side_effects(tmp_path: Path, monkeypatch: pyt
     assert not (tmp_path / ".worktrees").exists()
 
 
-def test_dry_run_rejects_existing_feature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dry_run_prints_existing_feature_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from tests.conftest import init_git_repo
 
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
     assert cli.main(["preview", "--no-agent"]) == 0
+    capsys.readouterr()
 
-    assert cli.main(["preview", "--dry-run"]) == 1
+    assert cli.main(["preview", "--dry-run"]) == 0
+    assert "NEW_FEATURE_SLUG=preview" in capsys.readouterr().out
+
+
+def test_create_rejects_an_inconsistent_existing_feature(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    save_manifest(
+        tmp_path,
+        Manifest(
+            features={
+                "broken": FeatureRecord(
+                    name="broken",
+                    slug="broken",
+                    branch="broken",
+                    worktree=".worktrees/broken",
+                    target_branch="main",
+                    status="active",
+                    created_at="now",
+                )
+            }
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["broken", "--no-agent"]) == 1
+    error = capsys.readouterr().err
+    assert "missing worktree and missing branch" in error
+    assert "new-feature doctor --repair" in error
+
+
+def test_create_requires_teardown_before_reusing_a_merged_feature(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["merged", "--no-agent"]) == 0
+    manifest = load_manifest(tmp_path)
+    manifest.features["merged"].status = "merged"
+    save_manifest(tmp_path, manifest)
+    capsys.readouterr()
+
+    assert cli.main(["merged", "--no-agent"]) == 1
+    assert "new-feature teardown merged" in capsys.readouterr().err
 
 
 def test_setup_failure_forces_teardown(
