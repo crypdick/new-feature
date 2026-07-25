@@ -129,6 +129,11 @@ Supported env entries:
 
 `new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to `.gitignore`. If setup fails, it runs a forced teardown so the partial worktree, branch, and manifest entry do not linger.
 
+Running create again for an active feature reuses its recorded worktree and environment, skips
+allocation and setup, and launches the selected agent again. Without a selected agent, it prints
+the existing worktree guidance. If the recorded worktree or branch is missing, create stops and
+directs you to `new-feature doctor --repair` instead of silently replacing inconsistent state.
+
 After a successful create that does not launch an agent (for example, with `--no-agent` or no selected agent), `new-feature` prints the absolute worktree path and a copy-pasteable command such as:
 
 ```text

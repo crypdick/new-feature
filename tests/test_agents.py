@@ -147,6 +147,32 @@ def test_create_with_no_agent_prints_worktree_guidance_despite_default_agent(
     assert capsys.readouterr().out == f"Worktree ready: {worktree}\nNext: cd -- {worktree}\n"
 
 
+def test_create_relaunches_existing_feature_without_rerunning_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.conftest import init_git_repo
+
+    launches: list[tuple[object, ...]] = []
+    monkeypatch.setattr(agent_module, "launch_interactive_agent", lambda *args: launches.append(args) or 0)
+    init_git_repo(
+        tmp_path,
+        (
+            '[project]\nname = "demo"\n\n[tool.new-feature]\n'
+            'default_agent = "codex"\nsetup = ["printf x >> setup-runs.txt"]\n'
+        ),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["my-feature"]) == 0
+    assert main(["my-feature", "--prompt", "resume work"]) == 0
+
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    assert (worktree / "setup-runs.txt").read_text(encoding="utf-8") == "x"
+    assert len(launches) == 2
+    assert launches[0][1:3] == launches[1][1:3]
+    assert launches[1][3] == "resume work"
+
+
 def test_create_rejects_prompt_without_an_effective_agent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

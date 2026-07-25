@@ -282,7 +282,7 @@ def test_main_reports_unknown_features(tmp_path: Path, monkeypatch: pytest.Monke
     assert main(["teardown", "missing", "--force"]) == 1
 
 
-def test_create_dry_run_and_duplicate_detection(
+def test_create_dry_run_and_existing_feature_reuse(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from tests.conftest import init_git_repo
@@ -296,7 +296,11 @@ def test_create_dry_run_and_duplicate_detection(
     assert "Worktree ready:" not in dry_run_output
     assert "Next: cd --" not in dry_run_output
     assert main(["my-feature", "--no-agent"]) == 0
-    assert main(["my-feature", "--no-agent"]) == 1
+    capsys.readouterr()
+
+    assert main(["my-feature", "--no-agent"]) == 0
+
+    assert f"Worktree ready: {tmp_path / '.worktrees' / 'my-feature'}" in capsys.readouterr().out
 
 
 def test_create_launches_configured_agent(
