@@ -30,7 +30,7 @@ from new_feature.git import (
 from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.hook_install import install_claude_hook, install_codex_hook
 from new_feature.lifecycle import now
-from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
+from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest, target_merge_lock
 from new_feature.recovery import repair_feature
 from new_feature.slug import feature_key, slugify
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
@@ -236,17 +236,20 @@ def _merge(root: Path, name: str) -> int:
     run_commands(config.pre_merge, cwd=worktree, env=record.env)
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
-    if not worktree_is_clean(root):
-        raise NewFeatureError("target checkout has uncommitted changes; commit or stash them before merging")
-    try:
-        begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
-        run_commands(config.post_merge, cwd=root, env=record.env)
-        commit_merge(root, name=record.name)
-    except NewFeatureError:
-        abort_merge(root)
-        raise
-    if config.push:
-        push_target(root, target_branch=record.target_branch)
+    with target_merge_lock(root):
+        if not worktree_is_clean(root):
+            raise NewFeatureError(
+                "target checkout has uncommitted changes; commit or stash them before merging"
+            )
+        try:
+            begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
+            run_commands(config.post_merge, cwd=root, env=record.env)
+            commit_merge(root, name=record.name)
+            if config.push:
+                push_target(root, target_branch=record.target_branch)
+        except NewFeatureError:
+            abort_merge(root)
+            raise
     with manifest_lock(root):
         manifest = load_manifest(root)
         record = manifest.features.get(key)

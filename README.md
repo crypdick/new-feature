@@ -145,7 +145,7 @@ A CLI process cannot change its parent shell's or an already-running coding agen
 
 `new-feature list` shows each managed feature and its current Git/worktree state. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift. `doctor --repair` removes stale manifest entries whose worktree and branch are both already gone, and recovers a missing worktree only when its branch is already merged.
 
-`new-feature merge my-feature` runs pre-merge checks in the feature worktree and rejects a conflicting merge before changing the target checkout. It then starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`. Any failure after the merge starts is aborted.
+`new-feature merge my-feature` runs pre-merge checks in the feature worktree and rejects a conflicting merge before changing the target checkout. Concurrent merges can run those feature-local checks in parallel, but serialize before validating or changing the shared target checkout. It then starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, and pushes only when `push = true`. Any failure after the merge starts is aborted.
 
 `new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the worktree has uncommitted changes or the branch has commits that are not in the target branch, pass `--force` to abandon them deliberately.
 

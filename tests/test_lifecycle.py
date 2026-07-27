@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import subprocess
+from contextlib import nullcontext
+from threading import Event, Thread
 from typing import TYPE_CHECKING
 
 import pytest
 
-from new_feature import git
+from new_feature import cli, git
 from new_feature.cli import main
 from new_feature.errors import NewFeatureError
 from new_feature.git import remove_worktree_and_branch
-from new_feature.manifest import load_manifest
+from new_feature.manifest import FeatureRecord, Manifest, load_manifest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -120,6 +122,75 @@ push = false
     )
     assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "done\n"
     assert load_manifest(tmp_path).features["my_feature"].status == "merged"
+
+
+def test_concurrent_merges_serialize_target_checkout_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = Manifest(
+        features={
+            "first": FeatureRecord(
+                name="first",
+                slug="first",
+                branch="first",
+                worktree=".worktrees/first",
+                target_branch="main",
+                status="active",
+                created_at="2026-07-26T00:00:00Z",
+            ),
+            "second": FeatureRecord(
+                name="second",
+                slug="second",
+                branch="second",
+                worktree=".worktrees/second",
+                target_branch="main",
+                status="active",
+                created_at="2026-07-26T00:00:00Z",
+            ),
+        }
+    )
+    first_started = Event()
+    release_first = Event()
+    second_started = Event()
+    mutations: list[str] = []
+    results: list[int] = []
+
+    monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
+    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
+    monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
+    monkeypatch.setattr(cli, "save_manifest", lambda _root, _manifest: None)
+    monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env: None)
+    monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
+    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)
+
+    def begin_merge(_root: Path, *, branch: str, target_branch: str) -> None:
+        assert target_branch == "main"
+        mutations.append(branch)
+        if branch == "first":
+            first_started.set()
+            assert release_first.wait(timeout=5)
+        else:
+            second_started.set()
+
+    monkeypatch.setattr(cli, "begin_merge_without_commit", begin_merge)
+
+    def merge(name: str) -> None:
+        results.append(cli._merge(tmp_path, name))
+
+    first = Thread(target=merge, args=("first",))
+    second = Thread(target=merge, args=("second",))
+    first.start()
+    assert first_started.wait(timeout=5)
+    second.start()
+    assert not second_started.wait(timeout=0.1)
+    release_first.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert mutations == ["first", "second"]
+    assert results == [0, 0]
 
 
 def test_teardown_reports_a_missing_worktree(
