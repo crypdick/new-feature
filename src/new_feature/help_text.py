@@ -194,9 +194,10 @@ Merge a managed feature into its configured target branch.
 
 This runs pre-merge commands in the feature worktree, requires both the feature and
 target checkouts to be clean, and rejects a conflicting merge before changing the target
-checkout. It then starts a no-commit merge and runs post-merge commands in the target
-checkout. The merge is committed only when all checks pass. It is pushed only when
-push = true in the resolved configuration. A failed merge or check is aborted.
+checkout. Feature-local checks can run concurrently, but target checkout validation,
+merge, post-merge commands, commit, and optional push are serialized. The merge is
+committed only when all checks pass. It is pushed only when push = true in the resolved
+configuration. A failed merge or check is aborted.
 
 Run this command from the control checkout, not from the feature worktree.
 """

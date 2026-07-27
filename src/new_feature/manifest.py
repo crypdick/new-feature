@@ -18,6 +18,7 @@ from new_feature.errors import NewFeatureError
 MANIFEST_DIR = ".new-feature"
 MANIFEST_FILE = "manifest.toml"
 LOCK_FILE = "manifest.lock"
+TARGET_MERGE_LOCK_FILE = "target-merge.lock"
 MANIFEST_VERSION = 2
 type FeatureStatus = Literal["active", "merged"]
 type RawTable = dict[str, object]
@@ -69,6 +70,16 @@ def manifest_path(repo_root: Path) -> Path:
 def manifest_lock(repo_root: Path) -> Iterator[None]:
     """Serialize manifest reads and writes for a repository."""
     lock_path = repo_root / MANIFEST_DIR / LOCK_FILE
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(lock_path)):
+        yield
+
+
+@contextmanager
+def target_merge_lock(repo_root: Path) -> Iterator[None]:
+    """Serialize mutations of this repository's control checkout during merges."""
+    # ponytail: global lock; upgrade to per-target-branch locks if target checkout throughput matters. # temporal-ok
+    lock_path = repo_root / MANIFEST_DIR / TARGET_MERGE_LOCK_FILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(lock_path)):
         yield
