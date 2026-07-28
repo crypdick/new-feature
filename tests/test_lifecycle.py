@@ -61,12 +61,15 @@ def test_remove_worktree_and_branch_preserves_a_failed_removal_when_worktree_rem
     assert worktree.exists()
 
 
-def test_merge_rejects_conflicts_before_changing_the_target_checkout(
+def test_merge_rejects_conflicts_before_pre_merge_checks_or_changing_the_target_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from tests.conftest import init_git_repo
 
-    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    init_git_repo(
+        tmp_path,
+        '[project]\nname = "demo"\n\n[tool.new-feature]\npre_merge = ["false"]\n',
+    )
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-agent"]) == 0
     subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
@@ -80,12 +83,35 @@ def test_merge_rejects_conflicts_before_changing_the_target_checkout(
     subprocess.run(["git", "commit", "-m", "main change"], cwd=tmp_path, check=True)
 
     assert main(["merge", "my-feature"]) == 1
-    assert "feature branch conflicts with the target branch" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "feature branch conflicts with the target branch" in error
+    assert "command failed" not in error
     assert (
         subprocess.run(["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=tmp_path, check=False).returncode
         != 0
     )
     assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True)
+    assert load_manifest(tmp_path).features["my_feature"].status == "active"
+
+
+def test_merge_rejects_changes_made_by_pre_merge_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(
+        tmp_path,
+        '[project]\nname = "demo"\n\n[tool.new-feature]\npre_merge = ["touch pre-merge-dirty.txt"]\n',
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
+
+    assert main(["merge", "my-feature"]) == 1
+    error = capsys.readouterr().err
+    assert "running pre-merge checks" in error
+    assert "feature worktree has uncommitted changes" in error
     assert load_manifest(tmp_path).features["my_feature"].status == "active"
 
 
@@ -121,6 +147,35 @@ def test_merge_interrupt_aborts_prepared_target_merge(
     assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True)
     assert not (tmp_path / "feature.txt").exists()
     assert load_manifest(tmp_path).features["my_feature"].status == "active"
+
+
+def test_merge_start_failure_aborts_transaction(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    record = FeatureRecord(
+        name="demo",
+        slug="demo",
+        branch="feature/demo",
+        worktree=".worktrees/demo",
+        target_branch="main",
+        status="active",
+        created_at="now",
+    )
+    aborted: list[Path] = []
+    monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
+    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
+    monkeypatch.setattr(cli, "load_manifest", lambda _root: Manifest(features={"demo": record}))
+    monkeypatch.setattr(cli, "run_commands", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "worktree_is_clean", lambda _path: True)
+    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        cli,
+        "begin_merge_without_commit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(NewFeatureError("conflict")),
+    )
+    monkeypatch.setattr(cli, "abort_merge", aborted.append)
+
+    with pytest.raises(NewFeatureError, match="conflict"):
+        cli._merge(tmp_path, "demo")
+    assert aborted == [tmp_path]
 
 
 def test_merge_runs_checks_commits_and_prints_teardown_reminder(
@@ -195,6 +250,7 @@ def test_concurrent_merges_serialize_target_checkout_mutation(
     monkeypatch.setattr(cli, "save_manifest", lambda _root, _manifest: None)
     monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env: None)
     monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
+    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
     monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)
 
     def begin_merge(_root: Path, *, branch: str, target_branch: str) -> None:

@@ -21,6 +21,7 @@ from new_feature.git import (
     branch_exists,
     commit_merge,
     create_worktree,
+    ensure_merge_is_clean,
     is_branch_merged,
     push_target,
     remove_worktree_and_branch,
@@ -233,6 +234,11 @@ def _merge(root: Path, name: str) -> int:
             raise NewFeatureError(f"unknown feature: {name}")
     _warn_if_config_changed(config, record)
     worktree = root / record.worktree
+    if not worktree_is_clean(worktree):
+        raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
+    ensure_merge_is_clean(root, branch=record.branch, target_branch=record.target_branch)
+    if config.pre_merge:
+        print("new-feature: running pre-merge checks", file=sys.stderr, flush=True)
     run_commands(config.pre_merge, cwd=worktree, env=record.env)
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")

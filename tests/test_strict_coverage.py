@@ -481,6 +481,7 @@ def test_merge_pushes_when_configured_unit(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
     monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env: None)
     monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
+    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
     monkeypatch.setattr(cli, "begin_merge_without_commit", lambda _root, *, branch, target_branch: None)
     monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)
     monkeypatch.setattr(cli, "push_target", lambda _root, *, target_branch: pushed.append(target_branch))

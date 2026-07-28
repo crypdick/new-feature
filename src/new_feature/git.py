@@ -76,13 +76,18 @@ def merge_is_clean(root: Path, *, branch: str, target_branch: str) -> bool:
     return result.returncode == 0
 
 
-def begin_merge_without_commit(root: Path, *, branch: str, target_branch: str) -> None:
-    """Start a conflict-free no-commit merge into the expected target branch."""
-    # NOTE: README.md's Lifecycle section documents this preflight safety guarantee.
+def ensure_merge_is_clean(root: Path, *, branch: str, target_branch: str) -> None:
+    """Raise when merging a feature branch into its target would conflict."""
     if not merge_is_clean(root, branch=branch, target_branch=target_branch):
         raise NewFeatureError(
             "feature branch conflicts with the target branch; resolve the conflicts in the feature worktree before merging"
         )
+
+
+def begin_merge_without_commit(root: Path, *, branch: str, target_branch: str) -> None:
+    """Start a conflict-free no-commit merge into the expected target branch."""
+    # NOTE: README.md's Lifecycle section documents this preflight safety guarantee.
+    ensure_merge_is_clean(root, branch=branch, target_branch=target_branch)
     _git(root, "checkout", target_branch)
     _git(root, "merge", "--no-commit", "--no-ff", branch)
 

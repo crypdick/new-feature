@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
@@ -130,34 +129,6 @@ def test_setup_failure_reports_failed_forced_teardown(
     assert cli.main(["broken", "--no-agent"]) == 1
     assert "forced teardown failed" in capsys.readouterr().err
     assert (tmp_path / ".worktrees" / "broken").exists()
-
-
-def test_merge_start_failure_aborts_transaction(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    record = FeatureRecord(
-        name="demo",
-        slug="demo",
-        branch="feature/demo",
-        worktree=".worktrees/demo",
-        target_branch="main",
-        status="active",
-        created_at="now",
-    )
-    aborted: list[Path] = []
-    monkeypatch.setattr(cli, "load_project_config", lambda _root: ProjectConfig())
-    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
-    monkeypatch.setattr(cli, "load_manifest", lambda _root: Manifest(features={"demo": record}))
-    monkeypatch.setattr(cli, "run_commands", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli, "worktree_is_clean", lambda _path: True)
-    monkeypatch.setattr(
-        cli,
-        "begin_merge_without_commit",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(NewFeatureError("conflict")),
-    )
-    monkeypatch.setattr(cli, "abort_merge", aborted.append)
-
-    with pytest.raises(NewFeatureError, match="conflict"):
-        cli._merge(tmp_path, "demo")
-    assert aborted == [tmp_path]
 
 
 def test_missing_agent_is_reported_as_domain_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
