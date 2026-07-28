@@ -130,8 +130,10 @@ def test_merge_interrupt_aborts_prepared_target_merge(
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "feature change"], cwd=worktree, check=True)
 
-    def interrupt_post_merge(_commands: list[str], *, cwd: Path, env: dict[str, str]) -> None:
-        del env
+    def interrupt_post_merge(
+        _commands: list[str], *, cwd: Path, env: dict[str, str], failure_log: Path
+    ) -> None:
+        del env, failure_log
         if cwd == tmp_path:
             raise KeyboardInterrupt
 
@@ -248,7 +250,7 @@ def test_concurrent_merges_serialize_target_checkout_mutation(
     monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
     monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
     monkeypatch.setattr(cli, "save_manifest", lambda _root, _manifest: None)
-    monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env: None)
+    monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env, failure_log: None)
     monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
     monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
     monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)

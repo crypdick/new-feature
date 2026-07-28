@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse  # noqa: TC003 - package-wide beartype needs annotation types at runtime
+import os
 import sys
 from pathlib import Path
 from typing import cast
@@ -224,6 +225,19 @@ def _reusable_feature_worktree(root: Path, record: FeatureRecord) -> Path:
     return worktree
 
 
+def _merge_failure_log(root: Path, record: FeatureRecord, *, phase: str) -> Path:
+    """Return a unique retained-output path for one merge-check phase."""
+    timestamp = now().replace(":", "-")
+    return (
+        root
+        / ".new-feature"
+        / "diagnostics"
+        / "merge-failures"
+        / record.slug
+        / f"{timestamp}-{os.getpid()}-{phase}.log"
+    )
+
+
 def _merge(root: Path, name: str) -> int:
     config = load_project_config(root)
     key = feature_key(slugify(name))
@@ -239,7 +253,13 @@ def _merge(root: Path, name: str) -> int:
     ensure_merge_is_clean(root, branch=record.branch, target_branch=record.target_branch)
     if config.pre_merge:
         print("new-feature: running pre-merge checks", file=sys.stderr, flush=True)
-    run_commands(config.pre_merge, cwd=worktree, env=record.env)
+    # NOTE: README.md documents retained merge-check diagnostics.
+    run_commands(
+        config.pre_merge,
+        cwd=worktree,
+        env=record.env,
+        failure_log=_merge_failure_log(root, record, phase="pre-merge"),
+    )
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
     with target_merge_lock(root):
@@ -249,7 +269,12 @@ def _merge(root: Path, name: str) -> int:
             )
         try:
             begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
-            run_commands(config.post_merge, cwd=root, env=record.env)
+            run_commands(
+                config.post_merge,
+                cwd=root,
+                env=record.env,
+                failure_log=_merge_failure_log(root, record, phase="post-merge"),
+            )
             commit_merge(root, name=record.name)
             if config.push:
                 push_target(root, target_branch=record.target_branch)

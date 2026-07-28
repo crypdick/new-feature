@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import socket
 import subprocess
 from typing import TYPE_CHECKING
@@ -334,6 +335,20 @@ def test_run_commands_expands_env(tmp_path: Path):
 def test_run_commands_reports_failed_command(tmp_path: Path):
     with pytest.raises(NewFeatureError, match="command failed"):
         run_commands(["exit 7"], cwd=tmp_path, env={})
+
+
+def test_run_commands_retains_failed_command_output(tmp_path: Path):
+    failure_log = tmp_path / "diagnostics" / "failure.log"
+
+    with pytest.raises(NewFeatureError, match=re.escape(str(failure_log))):
+        run_commands(
+            ['printf "standard output"; printf "error output" >&2; exit 7'],
+            cwd=tmp_path,
+            env={},
+            failure_log=failure_log,
+        )
+
+    assert failure_log.read_text(encoding="utf-8") == "standard outputerror output"
 
 
 def test_create_worktree_creates_branch_and_directory(tmp_path: Path):
