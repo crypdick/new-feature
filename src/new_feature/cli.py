@@ -247,7 +247,7 @@ def _merge(root: Path, name: str) -> int:
             commit_merge(root, name=record.name)
             if config.push:
                 push_target(root, target_branch=record.target_branch)
-        except NewFeatureError:
+        except BaseException:
             abort_merge(root)
             raise
     with manifest_lock(root):

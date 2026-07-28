@@ -89,6 +89,40 @@ def test_merge_rejects_conflicts_before_changing_the_target_checkout(
     assert load_manifest(tmp_path).features["my_feature"].status == "active"
 
 
+def test_merge_interrupt_aborts_prepared_target_merge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    (worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "feature change"], cwd=worktree, check=True)
+
+    def interrupt_post_merge(_commands: list[str], *, cwd: Path, env: dict[str, str]) -> None:
+        del env
+        if cwd == tmp_path:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "run_commands", interrupt_post_merge)
+
+    with pytest.raises(KeyboardInterrupt):
+        main(["merge", "my-feature"])
+
+    assert (
+        subprocess.run(["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=tmp_path, check=False).returncode
+        != 0
+    )
+    assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True)
+    assert not (tmp_path / "feature.txt").exists()
+    assert load_manifest(tmp_path).features["my_feature"].status == "active"
+
+
 def test_merge_runs_checks_commits_and_prints_teardown_reminder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
