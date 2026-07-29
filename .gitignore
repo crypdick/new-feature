@@ -16,6 +16,7 @@ wheels/
 .ruff_cache/
 htmlcov/
 site/
+graphify-out/
 .new-feature/
 .worktrees/
 *.local.toml

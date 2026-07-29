@@ -17,7 +17,6 @@ from new_feature.config import ProjectConfig, config_fingerprint, load_project_c
 from new_feature.errors import NewFeatureError
 from new_feature.feature_state import inspect_feature
 from new_feature.git import (
-    abort_merge,
     begin_merge_without_commit,
     branch_exists,
     commit_merge,
@@ -27,6 +26,8 @@ from new_feature.git import (
     push_target,
     remove_worktree_and_branch,
     repo_root,
+    resolve_revision,
+    rollback_merge,
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
@@ -183,13 +184,13 @@ def _create(
     if created:
         try:
             run_commands(config.setup, cwd=worktree, env=env)
-        except NewFeatureError as setup_error:
+        except BaseException as setup_error:
             try:
                 _teardown(root, slug, force=True)
-            except NewFeatureError as teardown_error:
+            except BaseException as teardown_error:
                 raise NewFeatureError(
                     f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
-                ) from setup_error
+                ) from teardown_error
             raise
     else:
         _warn_if_config_changed(config, record)
@@ -238,6 +239,54 @@ def _merge_failure_log(root: Path, record: FeatureRecord, *, phase: str) -> Path
     )
 
 
+def _record_merged(root: Path, key: str, name: str) -> FeatureRecord:
+    with manifest_lock(root):
+        manifest = load_manifest(root)
+        record = manifest.features.get(key)
+        if record is None:
+            raise NewFeatureError(f"unknown feature after merge: {name}")
+        record.status = "merged"
+        record.merged_at = now()
+        save_manifest(root, manifest)
+        return record
+
+
+def _commit_feature_merge(
+    root: Path, config: ProjectConfig, key: str, record: FeatureRecord
+) -> FeatureRecord:
+    begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
+    run_commands(
+        config.post_merge,
+        cwd=root,
+        env=record.env,
+        failure_log=_merge_failure_log(root, record, phase="post-merge"),
+    )
+    commit_merge(root, name=record.name)
+    return _record_merged(root, key, record.name)
+
+
+def _merge_target(root: Path, config: ProjectConfig, key: str, record: FeatureRecord) -> FeatureRecord:
+    with target_merge_lock(root):
+        if not worktree_is_clean(root):
+            raise NewFeatureError(
+                "target checkout has uncommitted changes; commit or stash them before merging"
+            )
+        target_revision = resolve_revision(root, record.target_branch)
+        try:
+            record = _commit_feature_merge(root, config, key, record)
+        except BaseException as merge_error:
+            try:
+                rollback_merge(root, revision=target_revision)
+            except NewFeatureError as rollback_error:
+                raise NewFeatureError(
+                    f"merge failed and the target checkout could not be restored: {rollback_error}"
+                ) from merge_error
+            raise
+        if config.push:
+            push_target(root, target_branch=record.target_branch)
+        return record
+
+
 def _merge(root: Path, name: str) -> int:
     config = load_project_config(root)
     key = feature_key(slugify(name))
@@ -247,6 +296,12 @@ def _merge(root: Path, name: str) -> int:
         if record is None:
             raise NewFeatureError(f"unknown feature: {name}")
     _warn_if_config_changed(config, record)
+    if record.status == "merged":
+        with target_merge_lock(root):
+            if config.push:
+                push_target(root, target_branch=record.target_branch)
+        print(build_teardown_reminder(record.slug))
+        return 0
     worktree = root / record.worktree
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
@@ -262,33 +317,7 @@ def _merge(root: Path, name: str) -> int:
     )
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
-    with target_merge_lock(root):
-        if not worktree_is_clean(root):
-            raise NewFeatureError(
-                "target checkout has uncommitted changes; commit or stash them before merging"
-            )
-        try:
-            begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
-            run_commands(
-                config.post_merge,
-                cwd=root,
-                env=record.env,
-                failure_log=_merge_failure_log(root, record, phase="post-merge"),
-            )
-            commit_merge(root, name=record.name)
-            if config.push:
-                push_target(root, target_branch=record.target_branch)
-        except BaseException:
-            abort_merge(root)
-            raise
-    with manifest_lock(root):
-        manifest = load_manifest(root)
-        record = manifest.features.get(key)
-        if record is None:
-            raise NewFeatureError(f"unknown feature after merge: {name}")
-        record.status = "merged"
-        record.merged_at = now()
-        save_manifest(root, manifest)
+    record = _merge_target(root, config, key, record)
     print(build_teardown_reminder(record.slug))
     return 0
 

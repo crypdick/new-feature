@@ -97,16 +97,28 @@ def commit_merge(root: Path, *, name: str) -> None:
     _git(root, "commit", "-m", f"Merge feature {name}")
 
 
-def abort_merge(root: Path) -> None:
-    """Abort a merge that was started but not committed."""
-    subprocess.run(
-        ["git", "merge", "--abort"],
-        cwd=root,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-        env=_git_env(),
-    )
+def resolve_revision(root: Path, ref: str) -> str:
+    """Resolve a Git ref to its commit object ID."""
+    return _git(root, "rev-parse", "--verify", ref, capture=True).stdout.strip()
+
+
+def merge_in_progress(root: Path) -> bool:
+    """Return whether the checkout has an active merge."""
+    merge_head = _git(root, "rev-parse", "--git-path", "MERGE_HEAD", capture=True).stdout.strip()
+    return (root / merge_head).exists()
+
+
+def rollback_merge(root: Path, *, revision: str) -> None:
+    """Restore a checkout that was clean before a managed merge."""
+    _git(root, "reset", "--hard", revision)
+    _git(root, "clean", "-fd")
+    rollback_failed = [
+        resolve_revision(root, "HEAD") != revision,
+        merge_in_progress(root),
+        not worktree_is_clean(root),
+    ]
+    if any(rollback_failed):
+        raise NewFeatureError("managed merge rollback did not restore a clean target checkout")
 
 
 def push_target(root: Path, *, target_branch: str) -> None:
