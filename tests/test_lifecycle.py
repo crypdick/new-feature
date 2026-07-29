@@ -61,6 +61,27 @@ def test_remove_worktree_and_branch_preserves_a_failed_removal_when_worktree_rem
     assert worktree.exists()
 
 
+def test_merge_preflight_suppresses_output_without_git_quiet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[list[str], object, object]] = []
+
+    def run(command: list[str], **kwargs):
+        calls.append((command, kwargs.get("stdout"), kwargs.get("stderr")))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(git.subprocess, "run", run)
+
+    assert git.merge_is_clean(tmp_path, branch="feature", target_branch="main")
+    assert calls == [
+        (
+            ["git", "merge-tree", "--write-tree", "main", "feature"],
+            subprocess.DEVNULL,
+            subprocess.DEVNULL,
+        )
+    ]
+
+
 def test_merge_rejects_conflicts_before_pre_merge_checks_or_changing_the_target_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
