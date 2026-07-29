@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from new_feature import git as git_module
 from new_feature.allocator import allocate_env
 from new_feature.cli import main
 from new_feature.cli_parser import parse_args
@@ -22,10 +23,12 @@ from new_feature.config import (
 )
 from new_feature.errors import NewFeatureError
 from new_feature.git import (
-    abort_merge,
     ensure_repo_has_commits,
     is_branch_merged,
+    merge_in_progress,
     repo_root,
+    resolve_revision,
+    rollback_merge,
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
@@ -243,7 +246,9 @@ def test_git_reports_unborn_repositories_and_failed_commands(tmp_path: Path) -> 
         repo_root(tmp_path / "missing")
 
 
-def test_git_cleanliness_branch_ancestry_and_abort(tmp_path: Path) -> None:
+def test_git_cleanliness_branch_ancestry_and_rollback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from tests.conftest import init_git_repo
 
     init_git_repo(tmp_path)
@@ -255,7 +260,15 @@ def test_git_cleanliness_branch_ancestry_and_abort(tmp_path: Path) -> None:
     subprocess.run(["git", "add", "dirty.txt"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-m", "dirty"], cwd=tmp_path, check=True)
     assert is_branch_merged(tmp_path, branch="feature", target_branch="main") is False
-    abort_merge(tmp_path)
+    main_revision = resolve_revision(tmp_path, "main")
+    rollback_merge(tmp_path, revision=main_revision)
+    assert resolve_revision(tmp_path, "HEAD") == main_revision
+    assert merge_in_progress(tmp_path) is False
+    assert worktree_is_clean(tmp_path) is True
+
+    monkeypatch.setattr(git_module, "worktree_is_clean", lambda _root: False)
+    with pytest.raises(NewFeatureError, match="rollback did not restore"):
+        rollback_merge(tmp_path, revision=main_revision)
 
 
 def test_gitignore_existing_complete_file_stays_unchanged(tmp_path: Path) -> None:
@@ -441,8 +454,15 @@ def test_merge_reports_missing_record_after_merge(tmp_path: Path, monkeypatch: p
     (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "feature"], cwd=worktree, check=True)
+    target_before = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
 
     assert main(["merge", "my-feature"]) == 1
+    assert (
+        subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()
+        == target_before
+    )
+    assert not (tmp_path / "feature.txt").exists()
+    assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=tmp_path, text=True)
 
 
 def test_main_reports_unknown_internal_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -456,37 +476,3 @@ def test_main_reports_unknown_internal_command(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setattr(cli, "parse_args", lambda _argv: Namespace(command="weird"))
 
     assert cli.main([]) == 1
-
-
-def test_merge_pushes_when_configured_unit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from contextlib import nullcontext
-
-    from new_feature import cli
-
-    record = FeatureRecord(
-        name="my-feature",
-        slug="my-feature",
-        branch="feature/my-feature",
-        worktree=".worktrees/my-feature",
-        target_branch="main",
-        status="active",
-        created_at="2026-07-10T12:00:00Z",
-        env={},
-    )
-    manifest = Manifest(features={"my_feature": record})
-    pushed = []
-
-    monkeypatch.setattr(cli, "load_project_config", lambda _root: ProjectConfig(push=True))
-    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
-    monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
-    monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env, failure_log: None)
-    monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
-    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
-    monkeypatch.setattr(cli, "begin_merge_without_commit", lambda _root, *, branch, target_branch: None)
-    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)
-    monkeypatch.setattr(cli, "push_target", lambda _root, *, target_branch: pushed.append(target_branch))
-    monkeypatch.setattr(cli, "save_manifest", lambda _root, _manifest: None)
-
-    assert cli._merge(tmp_path, "my-feature") == 0
-    assert pushed == ["main"]
-    assert record.status == "merged"

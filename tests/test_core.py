@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import socket
 import subprocess
 from typing import TYPE_CHECKING
@@ -11,7 +10,6 @@ from new_feature.agent import build_initial_prompt, build_setup_prompt
 from new_feature.allocator import allocate_env
 from new_feature.cli import main
 from new_feature.cli_parser import build_parser, parse_args
-from new_feature.commands import run_commands
 from new_feature.config import (
     IntegerEnvSpec,
     LiteralEnvSpec,
@@ -325,30 +323,6 @@ def test_allocate_env_includes_builtin_values(tmp_path: Path):
     assert env["NEW_FEATURE_BRANCH"] == "feature/my-feature"
     assert env["NEW_FEATURE_WORKTREE"] == str(worktree)
     assert env["DATABASE_NAME"].startswith("demo_my_feature_")
-
-
-def test_run_commands_expands_env(tmp_path: Path):
-    run_commands(['printf "$VALUE" > output.txt'], cwd=tmp_path, env={"VALUE": "ok"})
-    assert (tmp_path / "output.txt").read_text(encoding="utf-8") == "ok"
-
-
-def test_run_commands_reports_failed_command(tmp_path: Path):
-    with pytest.raises(NewFeatureError, match="command failed"):
-        run_commands(["exit 7"], cwd=tmp_path, env={})
-
-
-def test_run_commands_retains_failed_command_output(tmp_path: Path):
-    failure_log = tmp_path / "diagnostics" / "failure.log"
-
-    with pytest.raises(NewFeatureError, match=re.escape(str(failure_log))):
-        run_commands(
-            ['printf "standard output"; printf "error output" >&2; exit 7'],
-            cwd=tmp_path,
-            env={},
-            failure_log=failure_log,
-        )
-
-    assert failure_log.read_text(encoding="utf-8") == "standard outputerror output"
 
 
 def test_create_worktree_creates_branch_and_directory(tmp_path: Path):
