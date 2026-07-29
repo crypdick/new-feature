@@ -66,8 +66,10 @@ def is_branch_merged(root: Path, *, branch: str, target_branch: str) -> bool:
 def merge_is_clean(root: Path, *, branch: str, target_branch: str) -> bool:
     """Return whether merging a feature branch into its target would avoid conflicts."""
     result = subprocess.run(
-        ["git", "merge-tree", "--write-tree", "--quiet", target_branch, branch],
+        ["git", "merge-tree", "--write-tree", target_branch, branch],
         cwd=root,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         check=False,
         env=_git_env(),
     )
