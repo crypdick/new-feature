@@ -1,5 +1,7 @@
 minimum_prek_version = "0.3.2"
 default_language_version.python = "python3"
+default_install_hook_types = ["pre-commit", "pre-push"]
+default_stages = ["pre-commit"]
 
 # Native prek hygiene hooks. These need no network access or managed environment.
 [[repos]]
@@ -139,6 +141,15 @@ name = "Fix future annotations"
 entry = "python scripts/prek_hooks/fix_future_annotations.py"
 language = "system"
 types = ["python"]
+
+[[repos.hooks]]
+id = "check-version-bump"
+name = "Require version bump before pushing main"
+entry = "python scripts/prek_hooks/check_version_bump.py"
+language = "system"
+pass_filenames = false
+always_run = true
+stages = ["pre-push"]
 
 [[repos.hooks]]
 id = "pytest"
