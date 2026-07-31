@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import signal
 import subprocess
 from contextlib import nullcontext
 from threading import Event, Thread
@@ -7,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from new_feature import cli, git
+from new_feature import app, cli, git
 from new_feature.cli import main
 from new_feature.errors import NewFeatureError
 from new_feature.git import remove_worktree_and_branch
@@ -159,7 +160,7 @@ def test_create_interrupt_runs_forced_teardown(tmp_path: Path, monkeypatch: pyte
     assert load_manifest(tmp_path).features == {}
 
 
-def test_merge_interrupt_aborts_prepared_target_merge(
+def test_merge_termination_aborts_prepared_target_merge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from tests.conftest import init_git_repo
@@ -174,17 +175,19 @@ def test_merge_interrupt_aborts_prepared_target_merge(
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "feature change"], cwd=worktree, check=True)
 
-    def interrupt_post_merge(
+    def terminate_post_merge(
         _commands: list[str], *, cwd: Path, env: dict[str, str], failure_log: Path
     ) -> None:
         del env, failure_log
         if cwd == tmp_path:
-            raise KeyboardInterrupt
+            signal.raise_signal(signal.SIGTERM)
 
-    monkeypatch.setattr(cli, "run_commands", interrupt_post_merge)
+    monkeypatch.setattr(cli, "run_commands", terminate_post_merge)
 
-    with pytest.raises(KeyboardInterrupt):
-        main(["merge", "my-feature"])
+    with pytest.raises(SystemExit) as exc_info:
+        app.main(["merge", "my-feature"])
+
+    assert exc_info.value.code == 128 + signal.SIGTERM
 
     assert (
         subprocess.run(["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=tmp_path, check=False).returncode
@@ -295,7 +298,8 @@ push = false
 
     assert main(["merge", "my-feature"]) == 0
     assert capsys.readouterr().out == (
-        "Feature merged. Remember to `new-feature teardown my-feature` when you are done with the worktree.\n"
+        "Feature merged. @agents: do not orphan managed worktrees, teardown now if worktree "
+        "no longer needed: `new-feature teardown my-feature`.\n"
     )
     assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "done\n"
     assert load_manifest(tmp_path).features["my_feature"].status == "merged"
