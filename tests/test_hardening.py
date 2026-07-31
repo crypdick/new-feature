@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from new_feature import agent, atomic_file, cli, git
+from new_feature import agent, atomic_file, cli, feature_state, git
 from new_feature.config import (
     IntegerEnvSpec,
     LiteralEnvSpec,
@@ -18,7 +18,7 @@ from new_feature.config import (
     load_project_config,
 )
 from new_feature.errors import NewFeatureError
-from new_feature.feature_state import FeatureState
+from new_feature.feature_state import FeatureState, IntegrationState
 from new_feature.manifest import FeatureRecord, Manifest, load_manifest, save_manifest
 
 
@@ -185,7 +185,7 @@ def test_feature_state_describes_all_issues() -> None:
         worktree_exists=False,
         branch_exists=False,
         clean=False,
-        merged=False,
+        integration=IntegrationState.UNMERGED,
         config_drift=True,
     )
     assert unhealthy.stale is True
@@ -195,11 +195,33 @@ def test_feature_state_describes_all_issues() -> None:
         worktree_exists=True,
         branch_exists=True,
         clean=True,
-        merged=True,
+        integration=IntegrationState.MERGED,
         config_drift=False,
     )
     assert healthy.stale is False
     assert healthy.describe() == "ok"
+
+    equivalent = FeatureState(
+        worktree_exists=True,
+        branch_exists=True,
+        clean=False,
+        integration=IntegrationState.PATCH_EQUIVALENT,
+        config_drift=False,
+    )
+    assert equivalent.issues() == ("dirty",)
+    assert equivalent.describe() == "dirty,patch-equivalent"
+
+
+def test_integration_state_keeps_unmerged_merge_commits_unsafe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(feature_state, "is_branch_merged", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(feature_state, "branch_has_unmerged_merge_commits", lambda *_args, **_kwargs: True)
+
+    assert (
+        feature_state.inspect_integration(tmp_path, branch="feature", target_branch="main")
+        is IntegrationState.UNMERGED
+    )
 
 
 @pytest.mark.parametrize(

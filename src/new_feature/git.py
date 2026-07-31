@@ -63,6 +63,25 @@ def is_branch_merged(root: Path, *, branch: str, target_branch: str) -> bool:
     return result.returncode == 0
 
 
+def branch_has_unique_patches(root: Path, *, branch: str, target_branch: str) -> bool:
+    """Return whether ``branch`` has a non-merge patch absent from the target history."""
+    result = _git(root, "cherry", target_branch, branch, capture=True)
+    return any(line.startswith("+ ") for line in result.stdout.splitlines())
+
+
+def branch_has_unmerged_merge_commits(root: Path, *, branch: str, target_branch: str) -> bool:
+    """Return whether the branch range contains a merge commit Git cherry would ignore."""
+    result = _git(
+        root,
+        "rev-list",
+        "--merges",
+        "--max-count=1",
+        f"{target_branch}..{branch}",
+        capture=True,
+    )
+    return bool(result.stdout.strip())
+
+
 def merge_is_clean(root: Path, *, branch: str, target_branch: str) -> bool:
     """Return whether merging a feature branch into its target would avoid conflicts."""
     result = subprocess.run(
@@ -128,7 +147,9 @@ def push_target(root: Path, *, target_branch: str) -> None:
     _git(root, "push", "origin", target_branch)
 
 
-def remove_worktree_and_branch(root: Path, *, branch: str, worktree: Path, force: bool) -> None:
+def remove_worktree_and_branch(
+    root: Path, *, branch: str, worktree: Path, force: bool, force_branch: bool = False
+) -> None:
     """Remove a feature worktree and delete its local branch."""
     args = ["worktree", "remove"]
     if force:
@@ -140,7 +161,7 @@ def remove_worktree_and_branch(root: Path, *, branch: str, worktree: Path, force
         if worktree.exists():
             raise
         _git(root, "worktree", "prune")
-    _git(root, "branch", "-D" if force else "-d", branch)
+    _git(root, "branch", "-D" if force or force_branch else "-d", branch)
 
 
 def _git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:

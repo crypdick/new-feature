@@ -91,7 +91,8 @@ Managed state and safety:
   - .new-feature/, .worktrees/, and *.local.toml are automatically added to .gitignore.
   - Setup failure triggers forced cleanup of the partial feature.
   - merge requires clean feature and target checkouts, rejects predicted conflicts, and aborts failed merges.
-  - teardown refuses to discard dirty or unmerged work unless --force is supplied.
+  - teardown accepts merged and patch-equivalent branches, and refuses to discard dirty or
+    unmerged work unless --force is supplied.
   - list shows paths and state; doctor diagnoses stale state and configuration drift.
 """
 
@@ -206,17 +207,17 @@ TEARDOWN_DESCRIPTION = """\
 Run configured teardown commands, then remove a managed worktree, its feature branch,
 and its manifest entry.
 
-By default, teardown refuses to discard uncommitted changes or commits not merged into
-the target branch. --force deliberately bypasses both protections. Run this command
-from the control checkout, not from the feature worktree.
+By default, teardown refuses to discard uncommitted changes or commits whose patches are
+not represented in the target branch history. --force deliberately bypasses both
+protections. Run this command from the control checkout, not from the feature worktree.
 """
 
 LIST_DESCRIPTION = """\
 List every managed feature with its state, branch, and worktree path.
 
-State includes lifecycle status and detected problems such as a missing worktree,
-missing branch, dirty worktree, unmerged commits, or configuration drift. Run this
-command from the control checkout that owns .new-feature/manifest.toml.
+State includes lifecycle status and detected conditions such as a missing worktree,
+missing branch, dirty worktree, patch-equivalent or unmerged commits, and configuration
+drift. Run this command from the control checkout that owns .new-feature/manifest.toml.
 """
 
 DOCTOR_DESCRIPTION = """\

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from new_feature.feature_state import IntegrationState
 from new_feature.git import remove_worktree_and_branch
 
 if TYPE_CHECKING:
@@ -21,12 +22,18 @@ def repair_feature(
     """Repair a stale feature record and return a description of the repair."""
     if state.stale:
         return f"removed stale manifest entry {record.slug}"
-    if not state.worktree_exists and state.branch_exists and state.merged:
+    if (
+        not state.worktree_exists
+        and state.branch_exists
+        and state.integration in {IntegrationState.MERGED, IntegrationState.PATCH_EQUIVALENT}
+    ):
         remove_worktree_and_branch(
             root,
             branch=record.branch,
             worktree=root / record.worktree,
             force=False,
+            force_branch=state.integration is IntegrationState.PATCH_EQUIVALENT,
         )
-        return f"removed missing worktree and merged branch {record.slug}"
+        integration = "merged" if state.integration is IntegrationState.MERGED else "patch-equivalent"
+        return f"removed missing worktree and {integration} branch {record.slug}"
     return None
