@@ -21,6 +21,7 @@ def test_load_project_config_defaults(tmp_path: Path):
     assert config.agents == {"codex": ("codex",), "claude": ("claude",)}
     assert config.create_prompt is None
     assert config.setup_prompt is None
+    assert config.pull_before_create is False
     assert config.push is False
     assert config.setup == []
     assert config.pre_merge == []
@@ -39,6 +40,7 @@ name = "demo"
 target_branch = "develop"
 default_agent = "shared"
 create_prompt = "shared prompt"
+pull_before_create = false
 push = false
 setup = ["shared setup"]
 
@@ -55,6 +57,7 @@ REPLACED = { allocate = "port", min = 3000, max = 3001 } # temporal-ok
     (tmp_path / ".new-feature.local.toml").write_text(
         """
 default_agent = "local"
+pull_before_create = true
 push = true
 setup = ["local setup"]
 
@@ -74,6 +77,7 @@ LOCAL = { allocate = "slug", prefix = "dev" }
     assert config.target_branch == "develop"
     assert config.default_agent == "local"
     assert config.create_prompt == "shared prompt"
+    assert config.pull_before_create is True
     assert config.push is True
     assert config.setup == ["local setup"]
     assert config.agents == {

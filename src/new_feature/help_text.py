@@ -21,11 +21,13 @@ Configuration: put shared repository policy in .new-feature.toml, or in
 
 Put personal preferences in the ignored .new-feature.local.toml sidecar:
   default_agent = "codex"          # selected when --agent is omitted
+  pull_before_create = true         # fast-forward target before creating a worktree
   push = true                       # push target_branch after a successful merge
   agents = { custom = ["custom-agent", "--prompt"] }
 
 All settings are optional. The defaults are target_branch = "main", no default agent,
-built-in codex and claude aliases, push = false, and empty command and environment lists.
+built-in codex and claude aliases, pull_before_create = false, push = false, and empty command
+and environment lists.
 Without default_agent, feature creation does not launch an interactive agent. Built-in create
 and setup prompts can be overridden with create_prompt and setup_prompt in TOML, or for one
 invocation with --prompt TEXT.
@@ -36,9 +38,9 @@ env entries overlay by name. The local sidecar uses the standalone syntax above,
 shared configuration is in pyproject.toml. For pyproject.toml, place shared env values under
 [tool.new-feature.env] instead of [env].
 
-default_agent and push are supported in shared config when a repository deliberately requires
-them, but local placement is recommended. new-feature setup and feature creation add
-*.local.toml to .gitignore.
+default_agent, pull_before_create, and push are supported in shared config when a repository
+deliberately requires them, but local placement is recommended. new-feature setup and feature
+creation add *.local.toml to .gitignore.
 
 Configured commands are shell strings run sequentially. They receive the allocated
 environment plus NEW_FEATURE_NAME, NEW_FEATURE_SLUG, NEW_FEATURE_BRANCH,
@@ -90,6 +92,7 @@ Managed state and safety:
   - Worktrees live at .worktrees/SLUG and branches are named SLUG.
   - .new-feature/, .worktrees/, and *.local.toml are automatically added to .gitignore.
   - Setup failure triggers forced cleanup of the partial feature.
+  - pull_before_create fast-forwards the clean target checkout before creating a new worktree.
   - merge requires clean feature and target checkouts, rejects predicted conflicts, and aborts failed merges.
   - teardown accepts merged and patch-equivalent branches, and refuses to discard dirty or
     unmerged work unless --force is supplied.

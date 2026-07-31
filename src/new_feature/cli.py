@@ -22,6 +22,7 @@ from new_feature.git import (
     commit_merge,
     create_worktree,
     ensure_merge_is_clean,
+    pull_target,
     push_target,
     remove_worktree_and_branch,
     repo_root,
@@ -118,9 +119,7 @@ def _create(
     agent_options: agent_module.AgentLaunchOptions,
 ) -> int:
     config = load_project_config(root)
-    agent_command = None if no_agent else agent_module.resolve_agent(config, agent_options.agent_override)
-    if agent_command is None and agent_options.prompt_override is not None:
-        raise agent_module.agent_required_error(prompt_requested=True)
+    agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
     slug = slugify(name)
     key = feature_key(slug)
     branch = slug
@@ -145,6 +144,9 @@ def _create(
         for env_key, env_value in sorted(env.items()):
             print(f"{env_key}={env_value}")
         return 0
+
+    config = _pull_config_before_create(root, key=key, config=config)
+    agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
 
     ensure_generated_paths_ignored(root)
     created = False
@@ -200,6 +202,26 @@ def _create(
         agent_module.build_initial_prompt(record.slug), config.create_prompt, agent_options.prompt_override
     )
     return agent_module.launch_interactive_agent(agent_command, worktree, env, prompt)
+
+
+def _resolve_create_agent(
+    config: ProjectConfig,
+    *,
+    no_agent: bool,
+    agent_options: agent_module.AgentLaunchOptions,
+) -> tuple[str, ...] | None:
+    agent_command = None if no_agent else agent_module.resolve_agent(config, agent_options.agent_override)
+    if agent_command is None and agent_options.prompt_override is not None:
+        raise agent_module.agent_required_error(prompt_requested=True)
+    return agent_command
+
+
+def _pull_config_before_create(root: Path, *, key: str, config: ProjectConfig) -> ProjectConfig:
+    manifest = load_manifest(root)
+    if not config.pull_before_create or manifest.features.get(key) is not None:
+        return config
+    pull_target(root, target_branch=config.target_branch)
+    return load_project_config(root)
 
 
 def _reusable_feature_worktree(root: Path, record: FeatureRecord) -> Path:
