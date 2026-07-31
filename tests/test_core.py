@@ -424,6 +424,33 @@ def test_teardown_requires_force_for_unmerged_commits(tmp_path: Path, monkeypatc
     assert worktree.exists()
 
 
+def test_list_and_teardown_accept_patch_equivalent_commits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    (worktree / "feature.txt").write_text("work\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "feature work"], cwd=worktree, check=True)
+    feature_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+    (tmp_path / "main.txt").write_text("main work\n", encoding="utf-8")
+    subprocess.run(["git", "add", "main.txt"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "main work"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "cherry-pick", feature_commit], cwd=tmp_path, check=True)
+
+    assert main(["list"]) == 0
+    assert "my-feature\tpatch-equivalent" in capsys.readouterr().out
+    assert main(["teardown", "my-feature"]) == 0
+    assert not worktree.exists()
+    assert not subprocess.check_output(
+        ["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True
+    ).strip()
+
+
 def test_teardown_requires_force_for_uncommitted_changes(tmp_path: Path, monkeypatch):
     from tests.conftest import init_git_repo
 

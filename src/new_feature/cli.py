@@ -15,14 +15,13 @@ from new_feature.cli_parser import parse_args
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
 from new_feature.errors import NewFeatureError
-from new_feature.feature_state import inspect_feature
+from new_feature.feature_state import IntegrationState, inspect_feature, inspect_integration
 from new_feature.git import (
     begin_merge_without_commit,
     branch_exists,
     commit_merge,
     create_worktree,
     ensure_merge_is_clean,
-    is_branch_merged,
     push_target,
     remove_worktree_and_branch,
     repo_root,
@@ -336,13 +335,22 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
         raise NewFeatureError(
             "feature worktree is missing; run `new-feature doctor --repair` to recover a merged branch"
         )
+    force_branch = False
     if not force:
         if not worktree_is_clean(worktree):
             raise NewFeatureError("feature worktree has uncommitted changes; pass --force to abandon them")
-        if not is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
+        integration = inspect_integration(root, branch=record.branch, target_branch=record.target_branch)
+        if integration is IntegrationState.UNMERGED:
             raise NewFeatureError("feature branch has unmerged commits; pass --force to abandon them")
+        force_branch = integration is IntegrationState.PATCH_EQUIVALENT
     run_commands(config.teardown, cwd=worktree, env=record.env)
-    remove_worktree_and_branch(root, branch=record.branch, worktree=worktree, force=force)
+    remove_worktree_and_branch(
+        root,
+        branch=record.branch,
+        worktree=worktree,
+        force=force,
+        force_branch=force_branch,
+    )
     with manifest_lock(root):
         manifest = load_manifest(root)
         del manifest.features[key]
