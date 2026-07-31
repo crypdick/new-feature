@@ -15,4 +15,7 @@ def build_worktree_ready_message(worktree: Path) -> str:
 def build_teardown_reminder(slug: str) -> str:
     """Return the successful-merge reminder to clean up a feature worktree."""
     # NOTE: README.md's Lifecycle section documents teardown after a successful merge.
-    return f"Feature merged. Remember to `new-feature teardown {slug}` when you are done with the worktree."
+    return (
+        "Feature merged. @agents: do not orphan managed worktrees, teardown now if worktree "
+        f"no longer needed: `new-feature teardown {slug}`."
+    )
