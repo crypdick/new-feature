@@ -69,6 +69,7 @@ exclude = [
 
 [tool.new-feature]
 target_branch = "main"
+pull_before_create = true
 setup = ["uv sync --locked --all-groups"]
 pre_merge = ["uv run prek run --all-files"]
 post_merge = ["uv run prek run --all-files"]
