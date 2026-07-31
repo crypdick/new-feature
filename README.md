@@ -72,12 +72,13 @@ Keep personal preferences in the ignored `.new-feature.local.toml` sidecar:
 
 ```toml
 default_agent = "codex"
+pull_before_create = true
 push = true
 agents = { custom = ["custom-agent", "--prompt"] }
 ```
 
 `new-feature setup` and feature creation ensure that `*.local.toml` is in `.gitignore`.
-This makes local agent commands, automatic-push preferences, and machine-specific values
+This makes local agent commands, automatic pull/push preferences, and machine-specific values
 safe to customize without changing versioned repository policy.
 
 All settings remain optional. `new-feature` resolves a shared configuration from
@@ -87,7 +88,7 @@ can also be used on its own. A local value replaces a shared scalar or command l
 in `agents` and `env` overlay by name. For projects that prefer the shared `pyproject.toml`
 form, use `[tool.new-feature.env]` there and `[env]` in the local sidecar.
 
-`default_agent` and `push` remain supported in shared config when a repository deliberately
+`default_agent`, `pull_before_create`, and `push` remain supported in shared config when a repository
 wants to enforce them, but local placement is the recommended default. `default_agent` is
 optional: without it, feature creation does not launch an interactive agent. Codex and Claude
 are built in and always work with `--agent`; `agents` adds or overrides named commands and fixed
@@ -127,10 +128,11 @@ Supported env entries:
 
 ## Lifecycle
 
-`new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to `.gitignore`. If setup fails or is interrupted, it stops the command's process group and runs a forced teardown so the partial worktree, branch, manifest entry, and child processes do not linger.
+`new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. With `pull_before_create = true`, it first runs a fast-forward-only pull on the clean, checked-out target branch. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to `.gitignore`. If setup fails or is interrupted, it stops the command's process group and runs a forced teardown so the partial worktree, branch, manifest entry, and child processes do not linger.
 
 Running create again for an active feature reuses its recorded worktree and environment, skips
-allocation and setup, and launches the selected agent again. Without a selected agent, it prints
+pulling, allocation, and setup, and launches the selected agent again. Dry runs also skip pulling.
+Without a selected agent, it prints
 the existing worktree guidance. If the recorded worktree or branch is missing, create stops and
 directs you to `new-feature doctor --repair` instead of silently replacing inconsistent state.
 

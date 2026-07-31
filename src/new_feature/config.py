@@ -21,6 +21,7 @@ _CONFIG_KEYS = {
     "agents",
     "create_prompt",
     "setup_prompt",
+    "pull_before_create",
     "push",
     "setup",
     "pre_merge",
@@ -103,6 +104,7 @@ class ProjectConfig:
     agents: dict[str, AgentCommand] = field(default_factory=_default_agents)
     create_prompt: str | None = None
     setup_prompt: str | None = None
+    pull_before_create: bool = False
     push: bool = False
     setup: list[str] = field(default_factory=list)
     pre_merge: list[str] = field(default_factory=list)
@@ -277,6 +279,7 @@ def config_fingerprint(config: ProjectConfig) -> str:
         "agents": config.agents,
         "create_prompt": config.create_prompt,
         "setup_prompt": config.setup_prompt,
+        "pull_before_create": config.pull_before_create,
         "push": config.push,
         "setup": config.setup,
         "pre_merge": config.pre_merge,
@@ -388,6 +391,7 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
         agents=parser.agents(),
         create_prompt=parser.optional_string("create_prompt"),
         setup_prompt=parser.optional_string("setup_prompt"),
+        pull_before_create=parser.boolean("pull_before_create", default=False),
         push=parser.boolean("push", default=False),
         setup=parser.string_list("setup"),
         pre_merge=parser.string_list("pre_merge"),

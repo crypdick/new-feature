@@ -31,6 +31,18 @@ def create_worktree(root: Path, *, branch: str, worktree: Path, target_branch: s
     _git(root, "worktree", "add", "-b", branch, str(worktree), target_branch)
 
 
+def pull_target(root: Path, *, target_branch: str) -> None:
+    """Fast-forward the clean, checked-out target branch from its upstream."""
+    current_branch = _git(root, "branch", "--show-current", capture=True).stdout.strip()
+    if current_branch != target_branch:
+        raise NewFeatureError(f"target branch '{target_branch}' is not checked out")
+    if not worktree_is_clean(root):
+        raise NewFeatureError(
+            "target checkout has uncommitted changes; commit or stash them before creating a feature"
+        )
+    _git(root, "pull", "--ff-only", capture=True)
+
+
 def worktree_is_clean(worktree: Path) -> bool:
     """Return whether a worktree has no staged, unstaged, or untracked changes."""
     result = _git(worktree, "status", "--porcelain", capture=True)
