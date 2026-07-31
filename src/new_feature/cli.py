@@ -333,7 +333,7 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
     worktree = root / record.worktree
     if not worktree.is_dir():
         raise NewFeatureError(
-            "feature worktree is missing; run `new-feature doctor --repair` to recover a merged branch"
+            "feature worktree is missing; run `new-feature doctor --repair` to recover an integrated branch"
         )
     force_branch = False
     if not force:
