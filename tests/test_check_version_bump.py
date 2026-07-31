@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -38,7 +39,12 @@ def run_hook(
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         cwd=repo,
-        input=f"refs/heads/main {local_sha} {remote_ref} {remote_sha}\n",
+        env={
+            **os.environ,
+            "PRE_COMMIT_TO_REF": local_sha,
+            "PRE_COMMIT_REMOTE_BRANCH": remote_ref,
+            "PRE_COMMIT_FROM_REF": remote_sha,
+        },
         text=True,
         capture_output=True,
         check=False,
