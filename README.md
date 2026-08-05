@@ -171,3 +171,6 @@ Both installers accept `--global` to install the guard in the user-level configu
 machine; outside a `new-feature`-managed repository the guard allows everything. The Claude
 Code installer also accepts `--local` to write the guard to `.claude/settings.local.json`,
 the personal gitignored settings file, instead of the shared `settings.json`.
+
+Set `I_INSIST=1` in an agent process environment to disable the guard for that process. Use it
+only after an explicit human instruction to override the managed-worktree workflow.

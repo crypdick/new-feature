@@ -12,6 +12,8 @@ from new_feature.hook_policy import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 
 def test_policy_denies_a_normalized_target_branch_edit(tmp_path: Path) -> None:
     from tests.conftest import init_git_repo
@@ -23,6 +25,16 @@ def test_policy_denies_a_normalized_target_branch_edit(tmp_path: Path) -> None:
     assert denial is not None
     assert "Direct agent edits" in denial.reason
     assert "target branch 'main'" in denial.reason
+
+
+def test_policy_allows_human_insistence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    monkeypatch.setenv("I_INSIST", "1")
+
+    assert evaluate_worktree_policy(EditRequest((tmp_path / "README.md",)), cwd=tmp_path) is None
+    assert evaluate_worktree_policy(WorktreeRequest(WorktreeAction("add")), cwd=tmp_path) is None
 
 
 def test_policy_denies_a_normalized_direct_worktree_operation(tmp_path: Path) -> None:
