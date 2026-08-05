@@ -185,6 +185,12 @@ def test_hook_denies_direct_worktree_add_and_remove(
     assert replacement in hook_output["permissionDecisionReason"]
 
 
+def test_hook_allows_only_the_insisted_command(tmp_path: Path) -> None:
+    assert _run_bash("I_INSIST=1 git worktree add /tmp/demo", cwd=tmp_path) is None
+    assert _run_bash("I_INSIST=0 git worktree add /tmp/demo", cwd=tmp_path) is not None
+    assert _run_bash("I_INSIST=1 echo ready && git worktree add /tmp/demo", cwd=tmp_path) is not None
+
+
 @pytest.mark.parametrize(
     "command",
     [

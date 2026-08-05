@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shlex
 import subprocess
@@ -87,8 +86,6 @@ class GitContext:
 
 def evaluate_worktree_policy(request: HookRequest, *, cwd: Path) -> PolicyDenial | None:
     """Return a denial when a normalized request bypasses managed worktrees."""
-    if os.environ.get("I_INSIST") == "1":
-        return None
     if isinstance(request, WorktreeRequest):
         return PolicyDenial(_worktree_denial_reason(request.action))
     for target in request.targets:
@@ -110,6 +107,8 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
     except ValueError:
         return None
     for shell_command in _shell_commands(tokens):
+        if _has_i_insist(shell_command):
+            continue
         git_arguments = _git_arguments(shell_command)
         if git_arguments is None:
             continue
@@ -117,6 +116,16 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
         if action is not None:
             return action
     return None
+
+
+def _has_i_insist(command: list[str]) -> bool:
+    """Return whether a command has an explicit human override assignment."""
+    for word in command:
+        if not _ASSIGNMENT.fullmatch(word):
+            return False
+        if word == "I_INSIST=1":
+            return True
+    return False
 
 
 def _shell_commands(tokens: list[str]) -> list[list[str]]:
