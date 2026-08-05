@@ -183,6 +183,8 @@ def test_hook_denies_direct_worktree_add_and_remove(
     assert isinstance(hook_output, dict)
     assert f"git worktree {action}" in hook_output["permissionDecisionReason"]
     assert replacement in hook_output["permissionDecisionReason"]
+    assert "Only with human approval" in hook_output["permissionDecisionReason"]
+    assert "I_INSIST=1" in hook_output["permissionDecisionReason"]
 
 
 def test_hook_allows_only_the_insisted_command(tmp_path: Path) -> None:

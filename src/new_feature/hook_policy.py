@@ -261,7 +261,6 @@ def _edit_denial_reason(context: GitContext) -> str:
 
 
 def _worktree_denial_reason(action: WorktreeAction) -> str:
-    # NOTE: README.md documents that hooks require the managed worktree lifecycle.
     replacement = (
         "`new-feature <feature-name> --no-agent`"
         if action == "add"
@@ -269,5 +268,5 @@ def _worktree_denial_reason(action: WorktreeAction) -> str:
     )
     return (
         f"BLOCKED [new-feature-worktree-{action}]: Direct `git worktree {action}` is disabled. "
-        f"Use {replacement} instead."
+        f"Use {replacement} instead. Only with human approval, prefix this command with `I_INSIST=1`."
     )
