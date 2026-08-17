@@ -28,6 +28,7 @@ from new_feature.git import (
     repo_root,
     resolve_revision,
     rollback_merge,
+    worktree_branch,
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
@@ -345,14 +346,23 @@ def _merge(root: Path, name: str) -> int:
 
 def _teardown(root: Path, name: str, *, force: bool) -> int:
     config = load_project_config(root)
-    key = feature_key(slugify(name))
+    slug = slugify(name)
+    key = feature_key(slug)
     with manifest_lock(root):
         manifest = load_manifest(root)
         record = manifest.features.get(key)
-        if record is None:
+    if record is None:
+        # NOTE: README.md's Lifecycle section documents this constrained unmanaged path.
+        worktree = root / ".worktrees" / slug
+        if not worktree.is_dir():
             raise NewFeatureError(f"unknown feature: {name}")
-    _warn_if_config_changed(config, record)
-    worktree = root / record.worktree
+        branch = worktree_branch(worktree)
+        target_branch = config.target_branch
+    else:
+        _warn_if_config_changed(config, record)
+        worktree = root / record.worktree
+        branch = record.branch
+        target_branch = record.target_branch
     if not worktree.is_dir():
         raise NewFeatureError(
             "feature worktree is missing; run `new-feature doctor --repair` to recover an integrated branch"
@@ -361,22 +371,28 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
     if not force:
         if not worktree_is_clean(worktree):
             raise NewFeatureError("feature worktree has uncommitted changes; pass --force to abandon them")
-        integration = inspect_integration(root, branch=record.branch, target_branch=record.target_branch)
+        if branch is None:
+            raise NewFeatureError("unmanaged worktree is detached; pass --force to abandon it")
+        integration = inspect_integration(root, branch=branch, target_branch=target_branch)
         if integration is IntegrationState.UNMERGED:
             raise NewFeatureError("feature branch has unmerged commits; pass --force to abandon them")
         force_branch = integration is IntegrationState.PATCH_EQUIVALENT
-    run_commands(config.teardown, cwd=worktree, env=record.env)
+    if record is None:
+        print("new-feature: unmanaged worktree; skipping configured teardown commands", file=sys.stderr)
+    else:
+        run_commands(config.teardown, cwd=worktree, env=record.env)
     remove_worktree_and_branch(
         root,
-        branch=record.branch,
+        branch=branch,
         worktree=worktree,
         force=force,
         force_branch=force_branch,
     )
-    with manifest_lock(root):
-        manifest = load_manifest(root)
-        del manifest.features[key]
-        save_manifest(root, manifest)
+    if record is not None:
+        with manifest_lock(root):
+            manifest = load_manifest(root)
+            del manifest.features[key]
+            save_manifest(root, manifest)
     return 0
 
 

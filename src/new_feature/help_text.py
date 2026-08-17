@@ -208,7 +208,9 @@ Run this command from the control checkout, not from the feature worktree.
 
 TEARDOWN_DESCRIPTION = """\
 Run configured teardown commands, then remove a managed worktree, its feature branch,
-and its manifest entry.
+and its manifest entry. If no manifest entry exists, teardown can still remove the
+conventional .worktrees/SLUG worktree and its branch; configured teardown commands are
+skipped because their recorded environment is unavailable.
 
 By default, teardown refuses to discard uncommitted changes or commits whose patches are
 not represented in the target branch history. --force deliberately bypasses both

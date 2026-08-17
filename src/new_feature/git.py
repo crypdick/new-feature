@@ -49,6 +49,12 @@ def worktree_is_clean(worktree: Path) -> bool:
     return not result.stdout.strip()
 
 
+def worktree_branch(worktree: Path) -> str | None:
+    """Return the checked-out branch, or None for a detached worktree."""
+    branch = _git(worktree, "branch", "--show-current", capture=True).stdout.strip()
+    return branch or None
+
+
 def branch_exists(root: Path, branch: str) -> bool:
     """Return whether a local branch exists."""
     result = subprocess.run(
@@ -160,9 +166,9 @@ def push_target(root: Path, *, target_branch: str) -> None:
 
 
 def remove_worktree_and_branch(
-    root: Path, *, branch: str, worktree: Path, force: bool, force_branch: bool = False
+    root: Path, *, branch: str | None, worktree: Path, force: bool, force_branch: bool = False
 ) -> None:
-    """Remove a feature worktree and delete its local branch."""
+    """Remove a worktree and its local branch when it has one."""
     args = ["worktree", "remove"]
     if force:
         args.append("--force")
@@ -173,7 +179,8 @@ def remove_worktree_and_branch(
         if worktree.exists():
             raise
         _git(root, "worktree", "prune")
-    _git(root, "branch", "-D" if force or force_branch else "-d", branch)
+    if branch is not None:
+        _git(root, "branch", "-D" if force or force_branch else "-d", branch)
 
 
 def _git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
