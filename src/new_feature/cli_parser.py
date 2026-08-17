@@ -106,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     teardown = subparsers.add_parser(
         "teardown",
-        help="clean up and remove a managed feature",
+        help="clean up and remove a feature worktree",
         description=TEARDOWN_DESCRIPTION,
         epilog=(
             "Examples:\n"
@@ -115,7 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    teardown.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
+    teardown.add_argument(
+        "name",
+        metavar="NAME",
+        help="managed feature name, or slug of an unmanaged .worktrees/SLUG worktree",
+    )
     teardown.add_argument(
         "--force",
         action="store_true",

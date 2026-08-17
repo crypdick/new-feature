@@ -395,6 +395,42 @@ def test_teardown_reports_a_missing_worktree(
     assert "my_feature" in load_manifest(tmp_path).features
 
 
+def test_teardown_removes_an_unmanaged_worktree(tmp_path: Path, monkeypatch, capsys):
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    worktree = tmp_path / ".worktrees" / "rescue-structural-events"
+    worktree.parent.mkdir()
+    subprocess.run(
+        ["git", "worktree", "add", "-b", "codex/rescue-structural-events", str(worktree)],
+        cwd=tmp_path,
+        check=True,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["teardown", "rescue-structural-events"]) == 0
+    assert "skipping configured teardown commands" in capsys.readouterr().err
+    assert not worktree.exists()
+    assert not subprocess.check_output(
+        ["git", "branch", "--list", "codex/rescue-structural-events"], cwd=tmp_path, text=True
+    ).strip()
+
+
+def test_teardown_force_removes_a_detached_unmanaged_worktree(tmp_path: Path, monkeypatch, capsys):
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    worktree = tmp_path / ".worktrees" / "detached"
+    worktree.parent.mkdir()
+    subprocess.run(["git", "worktree", "add", "--detach", str(worktree)], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["teardown", "detached"]) == 1
+    assert "unmanaged worktree is detached" in capsys.readouterr().err
+    assert main(["teardown", "detached", "--force"]) == 0
+    assert not worktree.exists()
+
+
 def test_doctor_repair_removes_a_missing_worktree_with_a_merged_branch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

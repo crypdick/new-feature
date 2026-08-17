@@ -99,7 +99,7 @@ def test_top_level_help_explains_agent_workflow():
         ("create", 'agents = { custom = ["custom-agent", "--prompt"] }'),
         ("setup", "*.local.toml ignore rules"),
         ("merge", "Run this command from the control checkout"),
-        ("teardown", "from the control checkout, not from the feature worktree"),
+        ("teardown", ".worktrees/SLUG"),
         ("list", "owns .new-feature/manifest.toml"),
         ("doctor", "owns .new-feature/manifest.toml"),
         ("install-codex-hook", "Unrelated repository hooks are"),
