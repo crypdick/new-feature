@@ -447,3 +447,38 @@ def test_doctor_repair_removes_a_missing_worktree_with_a_merged_branch(
     assert load_manifest(tmp_path).features == {}
     branches = subprocess.check_output(["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True)
     assert not branches.strip()
+
+
+@pytest.mark.parametrize("repair", [False, True])
+def test_integrated_branch_with_stale_upstream_is_removed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repair: bool,
+) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
+    remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+    assert main(["my-feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    subprocess.run(["git", "push", "--set-upstream", "origin", "my-feature"], cwd=worktree, check=True)
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
+    (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "feature"], cwd=worktree, check=True)
+    assert main(["merge", "my-feature"]) == 0
+
+    if repair:
+        subprocess.run(["git", "worktree", "remove", "--force", str(worktree)], cwd=tmp_path, check=True)
+        assert main(["doctor", "--repair"]) == 0
+    else:
+        assert main(["teardown", "my-feature"]) == 0
+
+    assert load_manifest(tmp_path).features == {}
+    assert not subprocess.check_output(
+        ["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True
+    ).strip()

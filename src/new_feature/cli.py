@@ -376,7 +376,7 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
         integration = inspect_integration(root, branch=branch, target_branch=target_branch)
         if integration is IntegrationState.UNMERGED:
             raise NewFeatureError("feature branch has unmerged commits; pass --force to abandon them")
-        force_branch = integration is IntegrationState.PATCH_EQUIVALENT
+        force_branch = True
     if record is None:
         print("new-feature: unmanaged worktree; skipping configured teardown commands", file=sys.stderr)
     else:

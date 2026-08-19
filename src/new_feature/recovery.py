@@ -32,7 +32,7 @@ def repair_feature(
             branch=record.branch,
             worktree=root / record.worktree,
             force=False,
-            force_branch=state.integration is IntegrationState.PATCH_EQUIVALENT,
+            force_branch=True,
         )
         integration = "merged" if state.integration is IntegrationState.MERGED else "patch-equivalent"
         return f"removed missing worktree and {integration} branch {record.slug}"
