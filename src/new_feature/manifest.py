@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 import tomli_w
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 from new_feature.atomic_file import atomic_text_write
 from new_feature.errors import NewFeatureError
@@ -19,6 +19,7 @@ MANIFEST_DIR = ".new-feature"
 MANIFEST_FILE = "manifest.toml"
 LOCK_FILE = "manifest.lock"
 TARGET_MERGE_LOCK_FILE = "target-merge.lock"
+FEATURE_LOCK_DIR = "features"
 MANIFEST_VERSION = 2
 type FeatureStatus = Literal["active", "merged"]
 type RawTable = dict[str, object]
@@ -83,6 +84,18 @@ def target_merge_lock(repo_root: Path) -> Iterator[None]:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(lock_path)):
         yield
+
+
+@contextmanager
+def feature_operation_lock(repo_root: Path, slug: str) -> Iterator[None]:
+    """Fail fast when a merge or teardown already owns this feature."""
+    lock_path = repo_root / MANIFEST_DIR / FEATURE_LOCK_DIR / f"{slug}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with FileLock(str(lock_path), timeout=0):
+            yield
+    except Timeout as exc:
+        raise NewFeatureError(f"feature operation already in progress: {slug}") from exc
 
 
 def load_manifest(repo_root: Path) -> Manifest:
