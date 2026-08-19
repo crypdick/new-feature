@@ -197,8 +197,8 @@ MERGE_DESCRIPTION = """\
 Merge a managed feature into its configured target branch.
 
 This requires a clean feature worktree and rejects a predicted conflict before pre-merge
-commands run. It then requires the target checkout to be clean and rechecks the conflict
-before changing it. Feature-local checks can run concurrently, but target checkout
+commands run. A second merge or teardown for the same feature fails while its lifecycle
+is in progress. Different features can run checks concurrently, but target checkout
 validation, merge, post-merge commands, commit, and optional push are serialized. The
 merge is committed only when all checks pass. It is pushed only when push = true in the
 resolved configuration. A failed merge or check is aborted.

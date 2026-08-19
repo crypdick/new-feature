@@ -34,7 +34,14 @@ from new_feature.git import (
 from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.hook_install import install_claude_hook, install_codex_hook
 from new_feature.lifecycle import now
-from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest, target_merge_lock
+from new_feature.manifest import (
+    FeatureRecord,
+    feature_operation_lock,
+    load_manifest,
+    manifest_lock,
+    save_manifest,
+    target_merge_lock,
+)
 from new_feature.recovery import repair_feature
 from new_feature.slug import feature_key, slugify
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
@@ -88,10 +95,11 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             dry_run=args.dry_run,
             agent_options=agent_module.AgentLaunchOptions(args.agent, args.prompt),
         )
-    if args.command == "merge":
-        return _merge(root, args.name)
-    if args.command == "teardown":
-        return _teardown(root, args.name, force=args.force)
+    if args.command in {"merge", "teardown"}:
+        with feature_operation_lock(root, slugify(args.name)):
+            if args.command == "merge":
+                return _merge(root, args.name)
+            return _teardown(root, args.name, force=args.force)
     if args.command == "list":
         return _list_features(root)
     if args.command == "doctor":
