@@ -221,17 +221,24 @@ CACHE_DIR = { allocate = "path" }
     assert config.env["CACHE_DIR"] == PathEnvSpec()
 
 
-def test_ensure_generated_paths_ignored_creates_gitignore(tmp_path: Path):
+def test_ensure_generated_paths_ignored_creates_local_excludes(tmp_path: Path):
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / ".git/info/exclude").unlink()
     ensure_generated_paths_ignored(tmp_path)
-    assert (tmp_path / ".gitignore").read_text(
+    assert (tmp_path / ".git/info/exclude").read_text(
         encoding="utf-8"
     ) == ".new-feature/\n.worktrees/\n*.local.toml\n"
 
 
 def test_ensure_generated_paths_ignored_is_idempotent(tmp_path: Path):
-    (tmp_path / ".gitignore").write_text(".venv\n.new-feature/\n", encoding="utf-8")
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / ".git/info/exclude").write_text(".venv\n.new-feature/", encoding="utf-8")
     ensure_generated_paths_ignored(tmp_path)
-    assert (tmp_path / ".gitignore").read_text(
+    assert (tmp_path / ".git/info/exclude").read_text(
         encoding="utf-8"
     ) == ".venv\n.new-feature/\n.worktrees/\n*.local.toml\n"
 
@@ -358,7 +365,7 @@ def test_initial_prompt_is_prd_interview_with_fast_path():
     assert "get right to work" in prompt
 
 
-def test_create_lifecycle_creates_worktree_manifest_and_gitignore(tmp_path: Path, monkeypatch):
+def test_create_lifecycle_creates_worktree_manifest_and_local_excludes(tmp_path: Path, monkeypatch):
     from tests.conftest import init_git_repo
 
     init_git_repo(
@@ -379,9 +386,9 @@ WEB_PORT = { allocate = "port", min = 3200, max = 3201 }
     assert (tmp_path / ".worktrees" / "my-feature").exists()
     assert (tmp_path / ".new-feature" / "manifest.toml").exists()
     assert load_manifest(tmp_path).features["my_feature"].branch == "my-feature"
-    assert ".new-feature/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
-    assert ".worktrees/" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
-    assert "*.local.toml" in (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert ".new-feature/" in (tmp_path / ".git/info/exclude").read_text(encoding="utf-8")
+    assert ".worktrees/" in (tmp_path / ".git/info/exclude").read_text(encoding="utf-8")
+    assert "*.local.toml" in (tmp_path / ".git/info/exclude").read_text(encoding="utf-8")
     assert (tmp_path / ".worktrees" / "my-feature" / "setup-port.txt").read_text(encoding="utf-8") == "3200"
 
 
@@ -394,6 +401,7 @@ def test_merge_requires_clean_target_checkout(
     monkeypatch.chdir(tmp_path)
 
     assert main(["my-feature", "--no-agent"]) == 0
+    (tmp_path / "unfinished.txt").write_text("user work\n", encoding="utf-8")
 
     assert main(["merge", "my-feature"]) == 1
     assert "target checkout has uncommitted changes" in capsys.readouterr().err

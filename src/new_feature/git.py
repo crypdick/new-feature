@@ -15,6 +15,12 @@ def repo_root(cwd: Path) -> Path:
     return Path(result.stdout.strip())
 
 
+def local_exclude_path(root: Path) -> Path:
+    """Resolve the local exclude file shared by the repository's worktrees."""
+    result = _git(root, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude", capture=True)
+    return Path(result.stdout.strip())
+
+
 def ensure_repo_has_commits(root: Path) -> None:
     """Raise when the repository has no commit that can seed a worktree."""
     result = subprocess.run(
