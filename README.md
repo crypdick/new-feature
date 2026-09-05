@@ -168,6 +168,12 @@ which Claude Code loads at session start. Both guards protect the configured tar
 direct agent edits and require Git worktree creation and removal to go through the managed
 `new-feature` lifecycle.
 
+Direct edits are allowed before the repository has any commits, so its first commit can
+be created. Once history exists, protection also applies to orphan target branches.
+The root `.new-feature.local.toml` remains editable only while Git ignores it and it is
+untracked; nested files and symlinks to other files receive no exception. Every path in
+a multi-file edit is checked independently.
+
 Both installers accept `--global` to install the guard in the user-level configuration
 (`~/.codex/hooks.json` or `~/.claude/settings.json`) so it covers every repository on the
 machine; outside a `new-feature`-managed repository the guard allows everything. The Claude
