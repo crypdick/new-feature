@@ -51,7 +51,8 @@ def test_pull_before_create_fast_forwards_only_for_new_worktrees(
     assert main(["my-feature", "--no-agent"]) == 0
     assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True) == pulled_head
 
-    subprocess.run(["git", "add", ".gitignore"], cwd=repo, check=True)
+    (repo / "local.txt").write_text("local change\n", encoding="utf-8")
+    subprocess.run(["git", "add", "local.txt"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-m", "local"], cwd=repo, check=True)
     assert main(["diverged", "--no-agent"]) == 1
     assert "Not possible to fast-forward" in capsys.readouterr().err

@@ -23,8 +23,6 @@ def test_repeat_merge_checks_current_worktree_and_commits(
     init_git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert cli.main(["create", "demo", "--no-agent"]) == 0
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "Ignore runtime state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "demo"
     note = worktree / "feature.txt"
     note.write_text("first\n", encoding="utf-8")

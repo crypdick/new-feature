@@ -94,8 +94,6 @@ def test_merge_rejects_conflicts_before_pre_merge_checks_or_changing_the_target_
     )
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-agent"]) == 0
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
@@ -127,8 +125,6 @@ def test_merge_rejects_changes_made_by_pre_merge_checks(
     )
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-agent"]) == 0
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
 
     assert main(["merge", "my-feature"]) == 1
     error = capsys.readouterr().err
@@ -168,8 +164,6 @@ def test_merge_termination_aborts_prepared_target_merge(
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-agent"]) == 0
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
@@ -251,8 +245,6 @@ def test_failed_post_merge_removes_generated_target_files(
     )
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-agent"]) == 0
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     target_before = git.resolve_revision(tmp_path, "HEAD")
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
@@ -288,8 +280,6 @@ push = false
     )
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-agent"]) == 0
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     worktree = tmp_path / ".worktrees" / "my-feature"
     (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
@@ -465,8 +455,6 @@ def test_integrated_branch_with_stale_upstream_is_removed(
     assert main(["my-feature", "--no-agent"]) == 0
     worktree = tmp_path / ".worktrees" / "my-feature"
     subprocess.run(["git", "push", "--set-upstream", "origin", "my-feature"], cwd=worktree, check=True)
-    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-m", "ignore generated state"], cwd=tmp_path, check=True)
     (worktree / "feature.txt").write_text("done\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
     subprocess.run(["git", "commit", "-m", "feature"], cwd=worktree, check=True)

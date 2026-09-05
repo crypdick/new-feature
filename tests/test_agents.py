@@ -201,9 +201,11 @@ def test_setup_without_default_agent_directs_user_to_builtin_agents(
     assert "setup requires an agent" in error
     assert "--agent codex" in error
     assert "--agent claude" in error
-    assert (tmp_path / ".gitignore").read_text(
-        encoding="utf-8"
-    ) == ".new-feature/\n.worktrees/\n*.local.toml\n"
+    assert (
+        (tmp_path / ".git/info/exclude")
+        .read_text(encoding="utf-8")
+        .endswith(".new-feature/\n.worktrees/\n*.local.toml\n")
+    )
 
 
 def test_setup_launches_builtin_codex_without_toml_configuration(

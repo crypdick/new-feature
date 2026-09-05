@@ -40,7 +40,7 @@ shared configuration is in pyproject.toml. For pyproject.toml, place shared env 
 
 default_agent, pull_before_create, and push are supported in shared config when a repository
 deliberately requires them, but local placement is recommended. new-feature setup and feature
-creation add *.local.toml to .gitignore.
+creation add *.local.toml to Git\'s local info/exclude without editing tracked files.
 
 Configured commands are shell strings run sequentially. They receive the allocated
 environment plus NEW_FEATURE_NAME, NEW_FEATURE_SLUG, NEW_FEATURE_BRANCH,
@@ -90,7 +90,7 @@ Managed state and safety:
   - setup adds generated-state and *.local.toml ignore rules, then launches an agent when selected.
   - install-codex-hook and install-claude-hook enforce the managed worktree workflow.
   - Worktrees live at .worktrees/SLUG and branches are named SLUG.
-  - .new-feature/, .worktrees/, and *.local.toml are automatically added to .gitignore.
+  - .new-feature/, .worktrees/, and *.local.toml are automatically added to Git\'s local info/exclude without editing tracked files.
   - Setup failure triggers forced cleanup of the partial feature.
   - pull_before_create fast-forwards the clean target checkout before creating a new worktree.
   - merge requires clean feature and target checkouts, rejects predicted conflicts, and aborts failed merges.
