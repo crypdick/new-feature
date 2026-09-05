@@ -128,6 +128,8 @@ Supported env entries:
 
 ## Lifecycle
 
+Repeat merges inspect the current branch and require a clean feature worktree. If commits were added after a successful merge, the command runs the full checks and merges those commits. A push-only retry applies only while the branch remains included in the target history.
+
 `new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. With `pull_before_create = true`, it first runs a fast-forward-only pull on the clean, checked-out target branch. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to `.gitignore`. If setup fails or is interrupted, it stops the command's process group and runs a forced teardown so the partial worktree, branch, manifest entry, and child processes do not linger.
 
 Running create again for an active feature reuses its recorded worktree and environment, skips
