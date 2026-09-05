@@ -94,6 +94,8 @@ def evaluate_worktree_policy(request: HookRequest, *, cwd: Path) -> PolicyDenial
         except (NewFeatureError, OSError):
             continue
         if context is not None and context.branch == context.target_branch:
+            if _is_ignored_root_sidecar(target, cwd=cwd, root=context.root):
+                continue
             return PolicyDenial(_edit_denial_reason(context))
     return None
 
@@ -214,6 +216,10 @@ def _git_context_for(path: Path, *, cwd: Path) -> GitContext | None:
     if root is None:
         return None
     root_path = Path(root).resolve()
+    # NOTE: README.md permits bootstrap only while the repository has no commits.
+    history = _git_output(root_path, "rev-list", "--all", "--max-count=1")
+    if history is not None and not history:
+        return None
     branch = _git_output(root_path, "branch", "--show-current")
     if not branch:
         return None
@@ -224,6 +230,15 @@ def _git_context_for(path: Path, *, cwd: Path) -> GitContext | None:
         branch=BranchName(branch),
         target_branch=BranchName(target_branch),
     )
+
+
+def _is_ignored_root_sidecar(path: Path, *, cwd: Path, root: Path) -> bool:
+    # NOTE: README.md permits only the ignored, untracked root configuration file.
+    target = path.expanduser()
+    if not target.is_absolute():
+        target = cwd / target
+    name = ".new-feature.local.toml"
+    return target.resolve() == root / name and _git_output(root, "check-ignore", "--", name) == name
 
 
 def _existing_probe_path(path: Path, *, cwd: Path) -> Path:
