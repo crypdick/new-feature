@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import assert_never
 
 from new_feature.config import (
-    EnvSpec,
     IntegerEnvSpec,
     LiteralEnvSpec,
     NameEnvSpec,
@@ -40,18 +39,31 @@ def allocate_env(
         "NEW_FEATURE_WORKTREE": str(worktree),
         "NEW_FEATURE_REPO_ROOT": str(repo_root),
     }
+    reserved_ports = {
+        value
+        for record in manifest.features.values()
+        for key, value in record.env.items()
+        if isinstance(config.env.get(key), PortEnvSpec)
+    }
     for key, spec in config.env.items():
-        env[key] = _allocate_value(key, spec, manifest, slug, repo_root)
+        if isinstance(spec, PortEnvSpec):
+            env[key] = _allocate_port(key, spec, reserved_ports)
+            reserved_ports.add(env[key])
+        else:
+            env[key] = _allocate_value(key, spec, manifest, slug, repo_root)
     return env
 
 
-def _allocate_value(key: str, spec: EnvSpec, manifest: Manifest, slug: str, repo_root: Path) -> str:
+def _allocate_value(
+    key: str,
+    spec: LiteralEnvSpec | IntegerEnvSpec | NameEnvSpec | SlugEnvSpec | PathEnvSpec,
+    manifest: Manifest,
+    slug: str,
+    repo_root: Path,
+) -> str:
     match spec:
         case LiteralEnvSpec(value=value):
             return value
-        case PortEnvSpec():
-            reserved = _reserved_values(key, manifest)
-            return _allocate_port(key, spec, reserved)
         case IntegerEnvSpec():
             reserved = _reserved_values(key, manifest)
             return _allocate_integer(key, spec, reserved)

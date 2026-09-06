@@ -21,7 +21,7 @@ LOCK_FILE = "manifest.lock"
 TARGET_MERGE_LOCK_FILE = "target-merge.lock"
 FEATURE_LOCK_DIR = "features"
 MANIFEST_VERSION = 2
-type FeatureStatus = Literal["active", "merged"]
+type FeatureStatus = Literal["initializing", "active", "merged"]
 type RawTable = dict[str, object]
 
 _FEATURE_FIELDS = {
@@ -88,7 +88,7 @@ def target_merge_lock(repo_root: Path) -> Iterator[None]:
 
 @contextmanager
 def feature_operation_lock(repo_root: Path, slug: str) -> Iterator[None]:
-    """Fail fast when a merge or teardown already owns this feature."""
+    """Fail fast when a lifecycle operation already owns this feature."""
     lock_path = repo_root / MANIFEST_DIR / FEATURE_LOCK_DIR / f"{slug}.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -166,8 +166,10 @@ def _optional_string(raw: RawTable, field_name: str, *, entry: str) -> str:
 
 
 def _feature_status(value: object, *, entry: str) -> FeatureStatus:
-    if value not in {"active", "merged"}:
-        raise NewFeatureError(f"feature manifest entry {entry}.status must be active or merged")
+    if value not in ("initializing", "active", "merged"):
+        raise NewFeatureError(
+            f"feature manifest entry {entry}.status must be active or merged or initializing"
+        )
     return value
 
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from new_feature.errors import NewFeatureError
 from new_feature.git import (
     branch_exists,
     branch_has_unique_patches,
@@ -33,6 +34,7 @@ class FeatureState:
     clean: bool | None
     integration: IntegrationState | None
     config_drift: bool
+    setup_incomplete: bool = False
 
     @property
     def stale(self) -> bool:
@@ -42,6 +44,8 @@ class FeatureState:
     def issues(self) -> tuple[str, ...]:
         """Return the detected consistency problems for this feature."""
         issues: list[str] = []
+        if self.setup_incomplete:
+            issues.append("setup-incomplete")
         if not self.worktree_exists:
             issues.append("missing-worktree")
         if not self.branch_exists:
@@ -87,9 +91,43 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
         else None
     )
     return FeatureState(
+        setup_incomplete=record.status == "initializing",
         worktree_exists=worktree_exists,
         branch_exists=local_branch_exists,
         clean=clean,
         integration=integration,
         config_drift=bool(record.config_fingerprint) and record.config_fingerprint != current_fingerprint,
     )
+
+
+def reusable_feature_worktree(root: Path, record: FeatureRecord) -> Path:
+    """Return an existing active feature's worktree or explain why it cannot be reopened."""
+    require_setup_complete(record)
+    if record.status == "merged":
+        raise NewFeatureError(
+            f"feature has already been merged: {record.slug}; "
+            f"run `new-feature teardown {record.slug}` before creating it again"
+        )
+
+    worktree = root / record.worktree
+    issues: list[str] = []
+    if not worktree.is_dir():
+        issues.append("missing worktree")
+    if not branch_exists(root, record.branch):
+        issues.append("missing branch")
+    if issues:
+        detail = " and ".join(issues)
+        raise NewFeatureError(
+            f"feature cannot be reopened: {record.slug} ({detail}); "
+            "run `new-feature doctor --repair` before retrying"
+        )
+    return worktree
+
+
+def require_setup_complete(record: FeatureRecord) -> None:
+    """Reject features whose setup never reached the ready state."""
+    if record.status == "initializing":
+        raise NewFeatureError(
+            f"feature setup did not complete: {record.slug}; inspect the worktree, then run "
+            f"`new-feature teardown {record.slug}` before recreating it"
+        )
