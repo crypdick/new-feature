@@ -15,6 +15,19 @@ project, proposes a repository-specific configuration, asks about unresolved cho
 as the optional Codex hook, and waits for approval before further edits. Run it again to
 review and improve an existing integration.
 
+## Releases
+
+Every push to `main`, including docs-only changes, runs quality gates and publishes
+an automatic release. CI preserves an unpublished manual version; otherwise it
+increments the latest patch with `uv version`, updating `pyproject.toml` and
+`uv.lock` together. It verifies and commits that version before publishing to PyPI
+and creating the GitHub release. Manual bumps remain available with
+`uv version --bump patch` (or `minor`/`major`).
+
+Retries reuse the release commit without another bump. Superseded runs defer to
+the newer push. The bot's version commit does not trigger another workflow run.
+Pull requests run quality gates without publishing.
+
 ## Documentation
 
 The documentation site uses this README as its homepage and generates its API reference
