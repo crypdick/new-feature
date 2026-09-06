@@ -129,11 +129,15 @@ def ensure_merge_is_clean(root: Path, *, branch: str, target_branch: str) -> Non
         )
 
 
+def checkout_target(root: Path, *, target_branch: str) -> None:
+    """Select the target before assuming ownership of its rollback state."""
+    _git(root, "checkout", target_branch)
+
+
 def begin_merge_without_commit(root: Path, *, branch: str, target_branch: str) -> None:
     """Start a conflict-free no-commit merge into the expected target branch."""
     # NOTE: README.md's Lifecycle section documents this preflight safety guarantee.
     ensure_merge_is_clean(root, branch=branch, target_branch=target_branch)
-    _git(root, "checkout", target_branch)
     _git(root, "merge", "--no-commit", "--no-ff", branch)
 
 

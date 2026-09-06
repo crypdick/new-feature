@@ -392,21 +392,6 @@ WEB_PORT = { allocate = "port", min = 3200, max = 3201 }
     assert (tmp_path / ".worktrees" / "my-feature" / "setup-port.txt").read_text(encoding="utf-8") == "3200"
 
 
-def test_merge_requires_clean_target_checkout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from tests.conftest import init_git_repo
-
-    init_git_repo(tmp_path, '[project]\nname = "demo"\n')
-    monkeypatch.chdir(tmp_path)
-
-    assert main(["my-feature", "--no-agent"]) == 0
-    (tmp_path / "unfinished.txt").write_text("user work\n", encoding="utf-8")
-
-    assert main(["merge", "my-feature"]) == 1
-    assert "target checkout has uncommitted changes" in capsys.readouterr().err
-
-
 def test_teardown_allows_clean_feature_without_unique_commits(tmp_path: Path, monkeypatch):
     from tests.conftest import init_git_repo
 

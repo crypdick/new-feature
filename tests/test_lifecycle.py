@@ -125,6 +125,10 @@ def test_merge_rejects_changes_made_by_pre_merge_checks(
     )
     monkeypatch.chdir(tmp_path)
     assert main(["my-feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees" / "my-feature"
+    (worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature"], cwd=worktree, check=True)
 
     assert main(["merge", "my-feature"]) == 1
     error = capsys.readouterr().err
@@ -203,6 +207,8 @@ def test_merge_start_failure_aborts_transaction(tmp_path: Path, monkeypatch: pyt
         created_at="now",
     )
     rolled_back: list[tuple[Path, str]] = []
+    monkeypatch.setattr(cli, "is_branch_merged", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
     monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
     monkeypatch.setattr(cli, "load_manifest", lambda _root: Manifest(features={"demo": record}))
@@ -329,6 +335,8 @@ def test_concurrent_merges_serialize_target_checkout_mutation(
     mutations: list[str] = []
     results: list[int] = []
 
+    monkeypatch.setattr(cli, "is_branch_merged", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
     monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
     monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)

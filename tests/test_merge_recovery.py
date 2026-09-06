@@ -65,7 +65,7 @@ def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
     monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
     monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env, failure_log: None)
     monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
-    monkeypatch.setattr(cli, "is_branch_merged", lambda _root, *, branch, target_branch: True)
+    monkeypatch.setattr(cli, "is_branch_merged", lambda _root, *, branch, target_branch: bool(merged))
     monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
     monkeypatch.setattr(
         cli,
@@ -73,6 +73,7 @@ def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
         lambda _root, *, branch, target_branch: merged.append(branch),
     )
     monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)
+    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli, "resolve_revision", lambda _root, _ref: "target-before")
 
     def push(_root: Path, *, target_branch: str) -> None:

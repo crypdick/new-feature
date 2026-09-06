@@ -14,10 +14,16 @@ from new_feature.cli_parser import parse_args
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
 from new_feature.errors import NewFeatureError
-from new_feature.feature_state import IntegrationState, inspect_feature, inspect_integration
+from new_feature.feature_state import (
+    IntegrationState,
+    inspect_feature,
+    inspect_integration,
+    require_setup_complete,
+    reusable_feature_worktree,
+)
 from new_feature.git import (
     begin_merge_without_commit,
-    branch_exists,
+    checkout_target,
     commit_merge,
     create_worktree,
     ensure_merge_is_clean,
@@ -36,6 +42,7 @@ from new_feature.hook_install import install_claude_hook, install_codex_hook
 from new_feature.lifecycle import merge_failure_log, now
 from new_feature.manifest import (
     FeatureRecord,
+    FeatureStatus,
     feature_operation_lock,
     load_manifest,
     manifest_lock,
@@ -148,62 +155,65 @@ def _create(
                 repo_root=root,
             )
         else:
-            _reusable_feature_worktree(root, record)
+            reusable_feature_worktree(root, record)
             env = record.env
         for env_key, env_value in sorted(env.items()):
             print(f"{env_key}={env_value}")
         return 0
 
-    config = _pull_config_before_create(root, key=key, config=config)
-    agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
-
     ensure_generated_paths_ignored(root)
-    created = False
-    with manifest_lock(root):
-        manifest = load_manifest(root)
-        record = manifest.features.get(key)
-        if record is None:
-            env = allocate_env(
-                config=config,
-                manifest=manifest,
-                name=name,
-                slug=slug,
-                branch=branch,
-                worktree=worktree,
-                repo_root=root,
-            )
-            create_worktree(root, branch=branch, worktree=worktree, target_branch=config.target_branch)
-            record = FeatureRecord(
-                name=name,
-                slug=slug,
-                branch=branch,
-                worktree=str(worktree.relative_to(root)),
-                target_branch=config.target_branch,
-                status="active",
-                created_at=now(),
-                config_fingerprint=config_fingerprint(config),
-                env=env,
-            )
-            manifest.features[key] = record
-            save_manifest(root, manifest)
-            created = True
-        else:
-            worktree = _reusable_feature_worktree(root, record)
-            env = record.env
+    with feature_operation_lock(root, slug):
+        config = _pull_config_before_create(root, key=key, config=config)
+        agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
 
-    if created:
-        try:
-            run_commands(config.setup, cwd=worktree, env=env)
-        except BaseException as setup_error:
+        created = False
+        with manifest_lock(root):
+            manifest = load_manifest(root)
+            record = manifest.features.get(key)
+            if record is None:
+                env = allocate_env(
+                    config=config,
+                    manifest=manifest,
+                    name=name,
+                    slug=slug,
+                    branch=branch,
+                    worktree=worktree,
+                    repo_root=root,
+                )
+                create_worktree(root, branch=branch, worktree=worktree, target_branch=config.target_branch)
+                record = FeatureRecord(
+                    name=name,
+                    slug=slug,
+                    branch=branch,
+                    worktree=str(worktree.relative_to(root)),
+                    target_branch=config.target_branch,
+                    # NOTE: README.md documents setup readiness and interrupted creation.
+                    status="initializing",
+                    created_at=now(),
+                    config_fingerprint=config_fingerprint(config),
+                    env=env,
+                )
+                manifest.features[key] = record
+                save_manifest(root, manifest)
+                created = True
+            else:
+                worktree = reusable_feature_worktree(root, record)
+                env = record.env
+
+        if created:
             try:
-                _teardown(root, slug, force=True)
-            except BaseException as teardown_error:
-                raise NewFeatureError(
-                    f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
-                ) from teardown_error
-            raise
-    else:
-        _warn_if_config_changed(config, record)
+                run_commands(config.setup, cwd=worktree, env=env)
+                record = _record_status(root, key, status="active")
+            except BaseException as setup_error:
+                try:
+                    _teardown(root, slug, force=True)
+                except BaseException as teardown_error:
+                    raise NewFeatureError(
+                        f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
+                    ) from teardown_error
+                raise
+        else:
+            _warn_if_config_changed(config, record)
     if agent_command is None:
         print(build_worktree_ready_message(worktree))
         return 0
@@ -229,41 +239,20 @@ def _pull_config_before_create(root: Path, *, key: str, config: ProjectConfig) -
     manifest = load_manifest(root)
     if not config.pull_before_create or manifest.features.get(key) is not None:
         return config
-    pull_target(root, target_branch=config.target_branch)
+    with target_merge_lock(root):
+        pull_target(root, target_branch=config.target_branch)
     return load_project_config(root)
 
 
-def _reusable_feature_worktree(root: Path, record: FeatureRecord) -> Path:
-    """Return an existing active feature's worktree or explain why it cannot be reopened."""
-    if record.status != "active":
-        raise NewFeatureError(
-            f"feature has already been merged: {record.slug}; "
-            f"run `new-feature teardown {record.slug}` before creating it again"
-        )
-
-    worktree = root / record.worktree
-    issues: list[str] = []
-    if not worktree.is_dir():
-        issues.append("missing worktree")
-    if not branch_exists(root, record.branch):
-        issues.append("missing branch")
-    if issues:
-        detail = " and ".join(issues)
-        raise NewFeatureError(
-            f"feature cannot be reopened: {record.slug} ({detail}); "
-            "run `new-feature doctor --repair` before retrying"
-        )
-    return worktree
-
-
-def _record_merged(root: Path, key: str, name: str) -> FeatureRecord:
+def _record_status(root: Path, key: str, *, status: FeatureStatus) -> FeatureRecord:
     with manifest_lock(root):
         manifest = load_manifest(root)
         record = manifest.features.get(key)
         if record is None:
-            raise NewFeatureError(f"unknown feature after merge: {name}")
-        record.status = "merged"
-        record.merged_at = now()
+            raise NewFeatureError(f"unknown feature during status update: {key}")
+        record.status = status
+        if status == "merged":
+            record.merged_at = now()
         save_manifest(root, manifest)
         return record
 
@@ -271,15 +260,16 @@ def _record_merged(root: Path, key: str, name: str) -> FeatureRecord:
 def _commit_feature_merge(
     root: Path, config: ProjectConfig, key: str, record: FeatureRecord
 ) -> FeatureRecord:
-    begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
-    run_commands(
-        config.post_merge,
-        cwd=root,
-        env=record.env,
-        failure_log=merge_failure_log(root, record.slug, phase="post-merge"),
-    )
-    commit_merge(root, name=record.name)
-    return _record_merged(root, key, record.name)
+    if not is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
+        begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
+        run_commands(
+            config.post_merge,
+            cwd=root,
+            env=record.env,
+            failure_log=merge_failure_log(root, record.slug, phase="post-merge"),
+        )
+        commit_merge(root, name=record.name)
+    return _record_status(root, key, status="merged")
 
 
 def _merge_target(root: Path, config: ProjectConfig, key: str, record: FeatureRecord) -> FeatureRecord:
@@ -288,7 +278,9 @@ def _merge_target(root: Path, config: ProjectConfig, key: str, record: FeatureRe
             raise NewFeatureError(
                 "target checkout has uncommitted changes; commit or stash them before merging"
             )
-        target_revision = resolve_revision(root, record.target_branch)
+        # NOTE: README.md requires target checkout selection before rollback ownership.
+        checkout_target(root, target_branch=record.target_branch)
+        target_revision = resolve_revision(root, "HEAD")
         try:
             record = _commit_feature_merge(root, config, key, record)
         except BaseException as merge_error:
@@ -312,18 +304,20 @@ def _merge(root: Path, name: str) -> int:
         record = manifest.features.get(key)
         if record is None:
             raise NewFeatureError(f"unknown feature: {name}")
+    require_setup_complete(record)
     _warn_if_config_changed(config, record)
     worktree = root / record.worktree
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
-    if record.status == "merged":
-        with target_merge_lock(root):
-            # NOTE: README.md documents repeat merges and push-only retries.
-            if is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
-                if config.push:
-                    push_target(root, target_branch=record.target_branch)
-                print(build_teardown_reminder(record.slug))
-                return 0
+    with target_merge_lock(root):
+        # NOTE: README.md documents Git-derived integration and push-only retries.
+        if is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
+            if record.status != "merged":
+                _record_status(root, key, status="merged")
+            if config.push:
+                push_target(root, target_branch=record.target_branch)
+            print(build_teardown_reminder(record.slug))
+            return 0
     ensure_merge_is_clean(root, branch=record.branch, target_branch=record.target_branch)
     if config.pre_merge:
         print("new-feature: running pre-merge checks", file=sys.stderr, flush=True)
@@ -414,17 +408,25 @@ def _doctor(root: Path, *, repair: bool) -> int:
 
     repaired: set[str] = set()
     if repair:
-        with manifest_lock(root):
-            manifest = load_manifest(root)
-            for key, record in list(manifest.features.items()):
+        for key, observed in manifest.features.items():
+            with (
+                feature_operation_lock(root, observed.slug),
+                target_merge_lock(root),
+                manifest_lock(root),
+            ):
+                current = load_manifest(root)
+                record = current.features.get(key)
+                if record is None:
+                    repaired.add(key)
+                    continue
                 state = inspect_feature(root, record, fingerprint)
+                states[key] = state
                 message = repair_feature(root, record, state)
                 if message:
-                    del manifest.features[key]
+                    del current.features[key]
+                    save_manifest(root, current)
                     repaired.add(key)
                     print(f"repaired: {message}")
-            if repaired:
-                save_manifest(root, manifest)
 
     remaining_issues = [state for key, state in states.items() if key not in repaired and state.issues()]
     if remaining_issues:

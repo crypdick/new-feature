@@ -33,6 +33,8 @@ def test_concurrent_same_feature_merge_and_teardown_fail_fast(
     results: list[int] = []
     errors: list[NewFeatureError] = []
 
+    monkeypatch.setattr(cli, "is_branch_merged", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
     monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
     monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
