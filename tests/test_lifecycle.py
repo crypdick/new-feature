@@ -51,7 +51,9 @@ def test_remove_worktree_and_branch_preserves_a_failed_removal_when_worktree_rem
     worktree.mkdir()
 
     def fake_git(_cwd: Path, *args: str, capture: bool = False):
-        del _cwd, args, capture
+        del _cwd, capture
+        if args[:2] == ("status", "--porcelain"):
+            return subprocess.CompletedProcess(["git", *args], 0, stdout=" M file\n")
         raise NewFeatureError("git command failed: worktree remove")
 
     monkeypatch.setattr(git, "_git", fake_git)

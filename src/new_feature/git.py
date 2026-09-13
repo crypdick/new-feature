@@ -186,9 +186,14 @@ def remove_worktree_and_branch(
     try:
         _git(root, *args)
     except NewFeatureError:
-        if worktree.exists():
+        if not worktree.exists():
+            _git(root, "worktree", "prune")
+        elif not force and worktree_is_clean(worktree):
+            # Git requires --force to remove a worktree containing a submodule,
+            # even when both worktree and submodule are clean.
+            _git(root, "worktree", "remove", "--force", str(worktree))
+        else:
             raise
-        _git(root, "worktree", "prune")
     if branch is not None:
         _git(root, "branch", "-D" if force or force_branch else "-d", branch)
 
