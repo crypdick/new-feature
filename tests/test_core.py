@@ -74,6 +74,8 @@ def test_top_level_help_explains_agent_workflow():
     assert "new-feature COMMAND --help" in help_text
     assert ".new-feature.toml" in help_text
     assert ".new-feature.local.toml" in help_text
+    assert "~/.config/new-feature/config.toml" in help_text
+    assert "$XDG_CONFIG_HOME/new-feature/config.toml" in help_text
     assert "*.local.toml" in help_text
     assert "--version" in help_text
     assert "[tool.new-feature]" in help_text

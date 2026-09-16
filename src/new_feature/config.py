@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -40,6 +41,7 @@ _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _NEW_FEATURE_TOML = ".new-feature.toml"
 _LOCAL_NEW_FEATURE_TOML = ".new-feature.local.toml"
 _PYPROJECT_TOML = "pyproject.toml"
+_GLOBAL_CONFIG_KEYS = {"default_agent"}
 
 
 def _default_agents() -> dict[str, AgentCommand]:
@@ -310,23 +312,42 @@ def _env_fingerprint(spec: EnvSpec) -> dict[str, object]:
 
 
 def load_project_config(repo_root: Path) -> ProjectConfig:
-    """Load shared configuration and then apply developer-local overrides."""
+    """Load global preferences, shared configuration, and repository-local overrides."""
     # NOTE: README.md documents standalone-file precedence and local override layering.
+    global_raw = _load_global_config()
     shared_raw, config_path, env_table = _load_shared_project_config(repo_root)
+    _parse_project_config(shared_raw, config_path=config_path, env_table=env_table)
+    repository_raw = {**global_raw, **shared_raw}
     local_config = repo_root / _LOCAL_NEW_FEATURE_TOML
     if not local_config.exists():
-        return _parse_project_config(shared_raw, config_path=config_path, env_table=env_table)
+        return _parse_project_config(repository_raw, config_path=config_path, env_table=env_table)
 
     local_raw = _load_toml_document(local_config)
     # Validate each source so a local setting cannot conceal a malformed shared setting.
     # Parse the returned configuration only after raw merging, so defaults cannot overwrite it.
-    _parse_project_config(shared_raw, config_path=config_path, env_table=env_table)
     _parse_project_config(local_raw, config_path=_LOCAL_NEW_FEATURE_TOML, env_table="[env]")
     return _parse_project_config(
-        _merge_project_config_raw(shared_raw, local_raw),
+        _merge_project_config_raw(repository_raw, local_raw),
         config_path=_LOCAL_NEW_FEATURE_TOML,
         env_table="[env]",
     )
+
+
+def _load_global_config() -> RawTable:
+    """Load the optional machine-wide default agent preference."""
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(config_home) if config_home else Path.home() / ".config"
+    config_path = base / "new-feature/config.toml"
+    if not config_path.exists():
+        return {}
+
+    raw = _load_toml_document(config_path)
+    unexpected = set(raw) - _GLOBAL_CONFIG_KEYS
+    if unexpected:
+        names = ", ".join(sorted(unexpected))
+        raise NewFeatureError(f"unsupported global config options: {names}")
+    _Parser(raw, "global config").optional_string("default_agent")
+    return raw
 
 
 def _load_shared_project_config(repo_root: Path) -> tuple[RawTable, str, str]:

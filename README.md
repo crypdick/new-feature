@@ -90,11 +90,23 @@ push = true
 agents = { custom = ["custom-agent", "--prompt"] }
 ```
 
+To choose one built-in agent by default across repositories, set it in the global config:
+
+```toml
+# ~/.config/new-feature/config.toml
+default_agent = "codex"
+```
+
+`$XDG_CONFIG_HOME/new-feature/config.toml` is used when `XDG_CONFIG_HOME` is set. Only
+`default_agent` is accepted globally. Repository shared config overrides the global value, and
+the repository's `.new-feature.local.toml` overrides both.
+
 `new-feature setup` and feature creation add `*.local.toml` to Git’s local `info/exclude`. Generated ignore rules are shared by linked worktrees and leave tracked `.gitignore` files unchanged.
 This makes local agent commands, automatic pull/push preferences, and machine-specific values
 safe to customize without changing versioned repository policy.
 
-All settings remain optional. `new-feature` resolves a shared configuration from
+All settings remain optional. `new-feature` first loads the optional global default agent, then
+resolves shared repository configuration from
 `.new-feature.toml` when present, otherwise from `[tool.new-feature]` in `pyproject.toml`.
 It then overlays `.new-feature.local.toml`, which uses the standalone-file syntax above and
 can also be used on its own. A local value replaces a shared scalar or command list; entries
