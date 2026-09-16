@@ -1,16 +1,21 @@
 # Quality
 
-## Current Grade
+This page describes checks for contributors to `new-feature`.
 
-| Area | Grade | Notes |
-| --- | --- | --- |
-| `src/new_feature/` | A- | Strict Ruff, mypy, runtime type checking, and 100% coverage gates are active. |
-| `tests/` | A- | Tests are wired to public behavior and run under pytest with xdist, timeout, and coverage. |
-| Quality gates | A | Ruff, mypy, vulture, deptry, detect-secrets, prek hygiene, and strictify custom hooks are configured. |
+`uv run prek run --all-files` is the canonical aggregate quality gate used locally,
+in pull requests, and before publishing a release. Some checks automatically format
+files; review their changes and rerun the gate when needed.
 
-## Maintenance
+The gate includes:
 
-`uv run prek run --all-files` is the canonical aggregate quality gate used locally and before
-publishing a release.
+- Ruff linting and formatting, mypy, vulture, and deptry.
+- Secret scanning, file hygiene, package metadata, and source-distribution checks.
+- Repository-local checks for exception handling, file length, and private imports in tests.
+- pytest with parallel workers, timeouts, and a 100% package coverage threshold,
+  with branch measurement enabled.
+- A strict MkDocs build, including generated Python module documentation.
 
-Keep this scorecard focused on real modules. When new domain areas appear, add rows for their coverage, type safety, complexity, and test health.
+`prek.toml` defines the checks; `pyproject.toml` defines their tool settings and
+coverage exclusions. Package imports also enable beartype runtime checks. Test
+observable behavior through public interfaces; meeting a coverage threshold alone
+does not establish correctness.

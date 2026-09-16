@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the automatic release described in README.md's Releases section."""
+"""Prepare the automatic release described in docs/CONTRIBUTING.md's Releases section."""
 
 from __future__ import annotations
 
