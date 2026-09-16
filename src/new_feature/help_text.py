@@ -25,6 +25,13 @@ Put personal preferences in the ignored .new-feature.local.toml sidecar:
   push = true                       # push target_branch after a successful merge
   agents = { custom = ["custom-agent", "--prompt"] }
 
+Set one default agent across repositories in ~/.config/new-feature/config.toml:
+  default_agent = "codex"
+
+When XDG_CONFIG_HOME is set, new-feature uses $XDG_CONFIG_HOME/new-feature/config.toml.
+Only default_agent is accepted globally. Repository shared config overrides the global value;
+.new-feature.local.toml overrides both.
+
 All settings are optional. The defaults are target_branch = "main", no default agent,
 built-in codex and claude aliases, pull_before_create = false, push = false, and empty command
 and environment lists.
@@ -32,7 +39,8 @@ Without default_agent, feature creation does not launch an interactive agent. Bu
 and setup prompts can be overridden with create_prompt and setup_prompt in TOML, or for one
 invocation with --prompt TEXT.
 
-new-feature resolves .new-feature.toml over pyproject.toml, then overlays
+new-feature loads the optional global default_agent, resolves .new-feature.toml over
+pyproject.toml, then overlays
 .new-feature.local.toml. A local scalar or command list replaces its shared value; agents and
 env entries overlay by name. The local sidecar uses the standalone syntax above, even when the
 shared configuration is in pyproject.toml. For pyproject.toml, place shared env values under

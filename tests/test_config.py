@@ -30,6 +30,67 @@ def test_load_project_config_defaults(tmp_path: Path):
     assert config.env == {}
 
 
+def test_global_config_supplies_default_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    config_home = tmp_path / "config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    global_config = config_home / "new-feature/config.toml"
+    global_config.parent.mkdir(parents=True)
+    global_config.write_text('default_agent = "codex"\n', encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    config = load_project_config(repo)
+
+    assert config.default_agent == "codex"
+
+
+def test_global_config_defaults_to_home_config_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("XDG_CONFIG_HOME")
+    monkeypatch.setattr("new_feature.config.Path.home", lambda: tmp_path)
+    global_config = tmp_path / ".config/new-feature/config.toml"
+    global_config.parent.mkdir(parents=True)
+    global_config.write_text('default_agent = "claude"\n', encoding="utf-8")
+
+    assert load_project_config(tmp_path).default_agent == "claude"
+
+
+def test_repository_configs_override_global_default_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    config_home = tmp_path / "config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    global_config = config_home / "new-feature/config.toml"
+    global_config.parent.mkdir(parents=True)
+    global_config.write_text('default_agent = "codex"\n', encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".new-feature.toml").write_text('default_agent = "claude"\n', encoding="utf-8")
+
+    assert load_project_config(repo).default_agent == "claude"
+
+    (repo / ".new-feature.local.toml").write_text('default_agent = "custom-agent"\n', encoding="utf-8")
+    assert load_project_config(repo).default_agent == "custom-agent"
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ("not valid toml", "invalid config.toml"),
+        ('default_agent = ""\n', "global config.default_agent must be a non-empty string"),
+        ("push = true\n", "unsupported global config options: push"),
+    ],
+)
+def test_global_config_rejects_invalid_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, content: str, message: str
+):
+    config_home = tmp_path / "config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    global_config = config_home / "new-feature/config.toml"
+    global_config.parent.mkdir(parents=True)
+    global_config.write_text(content, encoding="utf-8")
+
+    with pytest.raises(NewFeatureError, match=message):
+        load_project_config(tmp_path)
+
+
 def test_local_config_overlays_shared_pyproject_config_by_setting_and_table_entry(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text(
         """

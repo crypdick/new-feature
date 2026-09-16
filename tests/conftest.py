@@ -24,7 +24,8 @@ def init_git_repo(path: Path, pyproject: str | None = None) -> None:
 
 
 @pytest.fixture(autouse=True)
-def clean_git_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def clean_git_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for key in os.environ:
         if key.startswith("GIT_"):
             monkeypatch.delenv(key)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
