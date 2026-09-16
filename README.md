@@ -1,46 +1,28 @@
 # new-feature
 
-`new-feature` aims to eliminate friction for creating new features. In a single command, it creates isolated git worktrees, allocates conflict-free runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and optionally launches a configured coding agent in the new worktree.
+`new-feature` creates isolated Git worktrees, allocates runtime values, runs project-defined setup and teardown commands (such as creating and deleting a feature database), and optionally launches a configured coding agent in the new worktree.
 
 ## Install
+
+Requires Python 3.13 or newer and Git. Install your chosen coding agent separately
+and make its executable available on `PATH`.
 
 ```bash
 uv tool install new-feature
 new-feature setup --agent codex
 ```
 
-`new-feature setup` launches the configured coding agent in the current repository. With
-no local default agent yet, pass `--agent codex` or `--agent claude`. The agent inspects the
-project, proposes a repository-specific configuration, asks about unresolved choices such
-as the optional Codex hook, and waits for approval before further edits. Run it again to
-review and improve an existing integration.
-
-## Releases
-
-Every push to `main`, including docs-only changes, runs quality gates and publishes
-an automatic release. CI preserves an unpublished manual version; otherwise it
-increments the latest patch with `uv version`, updating `pyproject.toml` and
-`uv.lock` together. It verifies and commits that version before publishing to PyPI
-and creating the GitHub release. Manual bumps remain available with
-`uv version --bump patch` (or `minor`/`major`).
-
-Retries reuse the release commit without another bump. Superseded runs defer to
-the newer push. The bot's version commit does not trigger another workflow run.
-Pull requests run quality gates without publishing.
-
-## Documentation
-
-The documentation site uses this README as its homepage and generates its API reference
-from package docstrings. Build it before committing documentation changes:
-
-```bash
-uv run mkdocs build --strict
-```
-
-To preview the site locally with live reload, run `uv run mkdocs serve`. Pushing to
-`main` builds and deploys the site through GitHub Pages.
+Run `new-feature setup` inside the Git repository you want to configure. It adds local
+ignore rules and launches the selected coding agent. Without a configured default agent,
+pass `--agent codex` or `--agent claude`. The built-in prompt asks the agent to inspect the
+project, propose configuration, and obtain approval before further edits or installing
+the optional Codex or Claude Code hook. Run it again to review an existing integration.
 
 ## Usage
+
+Run lifecycle commands from the original checkout that owns `.new-feature/manifest.toml`.
+Use the feature worktree for edits and commits, then return to the original checkout
+to merge or tear down. Create an initial Git commit before creating feature worktrees.
 
 ```bash
 # Ask an agent to configure or improve new-feature for this repository.
@@ -51,7 +33,7 @@ new-feature my-feature
 new-feature my-feature --agent claude
 # Create a feature worktree without launching an agent, even when a default is configured.
 new-feature my-feature --no-agent
-# Merges the worktree into the main branch
+# Merge committed feature work into the configured target branch.
 new-feature merge my-feature
 # Run configured teardown and remove the feature worktree.
 new-feature teardown my-feature
@@ -62,6 +44,13 @@ new-feature list
 new-feature doctor
 new-feature doctor --repair
 ```
+
+`new-feature NAME` is shorthand for `new-feature create NAME`. Names are normalized
+into branch and directory slugs. Use the explicit `create` form when a name matches
+a subcommand, such as `new-feature create setup`.
+
+Use `new-feature create NAME --dry-run` to print proposed environment values without
+creating a worktree or reserving values. Run `new-feature COMMAND --help` for command help.
 
 ## Project Config
 
@@ -113,10 +102,10 @@ can also be used on its own. A local value replaces a shared scalar or command l
 in `agents` and `env` overlay by name. For projects that prefer the shared `pyproject.toml`
 form, use `[tool.new-feature.env]` there and `[env]` in the local sidecar.
 
-`default_agent`, `pull_before_create`, and `push` remain supported in shared config when a repository
-wants to enforce them, but local placement is the recommended default. `default_agent` is
-optional: without it, feature creation does not launch an interactive agent. Codex and Claude
-are built in and always work with `--agent`; `agents` adds or overrides named commands and fixed
+`default_agent`, `pull_before_create`, and `push` can supply shared defaults, but local
+configuration can override them. Local placement is recommended for personal preferences.
+`default_agent` is optional: without it or `--agent`, feature creation does not launch an
+interactive agent. Codex and Claude have built-in command aliases; `agents` adds or overrides named commands and fixed
 arguments. `new-feature` appends its generated feature prompt as the final argument, so a
 personal agent that requires a prompt flag can be configured in the local sidecar:
 
@@ -140,7 +129,19 @@ When the value exactly matches a key in `agents`, that configured command is use
 The built-in create and setup prompts can be overridden with `create_prompt` and `setup_prompt` in
 TOML, or for one invocation with `--prompt`.
 
-`setup` runs after worktree creation; `teardown` runs before worktree removal.
+Defaults are `target_branch = "main"`, `pull_before_create = false`, `push = false`,
+no selected agent, and empty lifecycle command lists and environment allocations.
+When enabled, pull uses the target branch's configured upstream; push sends the target
+branch to `origin`.
+
+Lifecycle commands are shell strings, run sequentially. `setup`, `pre_merge`, and
+`teardown` run in the feature worktree; `post_merge` runs in the original checkout
+after merging and before committing. A nonzero exit stops the operation.
+
+Commands and launched feature agents receive allocated environment values plus
+`NEW_FEATURE_NAME`, `NEW_FEATURE_SLUG`, `NEW_FEATURE_BRANCH`, `NEW_FEATURE_WORKTREE`,
+and `NEW_FEATURE_REPO_ROOT`. These values are not exported into your existing shell
+or coding-agent session; consult `.new-feature/manifest.toml` for manual commands.
 
 Supported env entries:
 
@@ -150,6 +151,13 @@ Supported env entries:
 - `{ allocate = "name", prefix = "myapp", max_length = 63 }`
 - `{ allocate = "slug", prefix = "myapp" }`
 - `{ allocate = "path", base = ".new-feature/cache" }`
+
+Port reservations are shared across configured port variables in this repository's
+manifest. Availability is checked on localhost during allocation; the tool does not
+hold the port open or reserve it against other repositories or programs. Integer
+reservations are per variable name. Path allocation returns `base/feature-slug` as
+text without creating a directory; relative paths resolve from the consuming command's
+working directory.
 
 ## Lifecycle
 
@@ -161,7 +169,7 @@ available; explicitly configured lifecycle environment values still take precede
 
 Merge completion is determined from Git ancestry, including empty features and features merged outside this tool. Already-integrated branches update manifest bookkeeping without running checks or creating another commit. Repeat merges inspect the current branch and require a clean feature worktree. If commits were added after a successful merge, the command runs the full checks and merges those commits. A push-only retry applies only while the branch remains included in the target history.
 
-`new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. With `pull_before_create = true`, it first runs a fast-forward-only pull on the clean, checked-out target branch. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to Git’s local `info/exclude`, preserving a clean target checkout. Existing local exclude rules are retained. If setup fails or is interrupted, it stops the command's process group and runs a forced teardown so the partial worktree, branch, manifest entry, and child processes do not linger.
+`new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. With `pull_before_create = true`, it first runs a fast-forward-only pull on the clean, checked-out target branch. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to Git’s local `info/exclude`, preserving existing exclude rules. If setup fails or receives a handled interruption, it stops the command's process group and attempts forced teardown. If teardown also fails, the command reports both failures; inspect the remaining worktree and use `doctor` to check its state.
 
 Running create again for an active feature reuses its recorded worktree and environment, skips
 pulling, allocation, and setup, and launches the selected agent again. Dry runs also skip pulling.
@@ -178,17 +186,20 @@ Next: cd -- /path/to/repository/.worktrees/my-feature
 
 A CLI process cannot change its parent shell's or an already-running coding agent's working directory. In an interactive shell, run the printed `cd` command; an existing coding agent should use the printed absolute path as the working directory for its subsequent tools. Paths on the `Next:` line are shell-quoted when necessary.
 
-Creation holds the feature operation lock through setup and publishes an `initializing` record until setup succeeds. Create, merge, teardown, and doctor repair cannot concurrently mutate the same feature. Interrupted setup reports `setup-incomplete`; inspect and preserve any work, then teardown and recreate the feature.
+Create, merge, teardown, and doctor repair cannot concurrently change the same feature.
+If interrupted creation leaves a feature marked `setup-incomplete`, inspect and preserve
+any work, then tear down and recreate the feature. After a successful merge, tear down
+the feature before creating another feature with the same name.
 
-Port allocators share reservations across all configured port variables, including values allocated earlier in the same creation.
-
-`new-feature list` shows each managed feature and its current Git/worktree state, including `patch-equivalent` when every non-merge patch already exists in the target history despite different commit ancestry. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift. `doctor --repair` removes stale manifest entries whose worktree and branch are both already gone, and recovers a missing worktree when its branch is merged or patch-equivalent.
+`new-feature list` shows each managed feature and its current Git/worktree state, including `patch-equivalent` when every patch already exists in the target history despite different commit ancestry and there are no unmerged merge commits. `new-feature doctor` reports stale manifest entries, dirty worktrees, unmerged branches, and configuration drift, returning a nonzero status while issues remain. `doctor --repair` removes stale manifest entries whose worktree and branch are both already gone. When a worktree is missing but its branch is merged or patch-equivalent, repair removes the branch, stale worktree registration, and manifest entry. It does not recreate worktrees or delete unmerged branches.
 
 If Git cannot inspect an existing worktree, `list` and `doctor` report `worktree-error`, print the Git error to stderr, and continue inspecting other features. `list` still succeeds; `doctor` returns a failing status. `doctor --repair` leaves unreadable worktrees and their manifest entries intact so you can recover their contents.
 
-`new-feature merge my-feature` first requires a clean feature worktree and rejects a predicted conflict, before it runs pre-merge checks. Different features can run those checks in parallel, but a second merge or teardown for the same feature fails while its lifecycle is in progress. Merges serialize before validating or changing the shared target checkout. Target checkout selection must succeed before rollback ownership begins. The command then rechecks the conflict under that lock, starts a no-commit merge into the target branch, runs post-merge checks on the merged target checkout, commits the merge only if those checks pass, records the merge, and pushes only when `push = true`. A failure through the bookkeeping step stops the command process group and restores the target's original clean revision, including removing generated untracked files. A push failure leaves the successful local merge recorded; rerun the same merge command to retry only the push. Failed pre- and post-merge commands retain their combined output under `.new-feature/diagnostics/merge-failures/<feature>/`; the error prints the exact log path.
+`new-feature merge my-feature` requires a clean feature worktree and rejects predicted conflicts before running pre-merge checks. Different features can run those checks in parallel. Updates to the target checkout run one at a time and require a clean target checkout. The command rechecks for conflicts, merges without committing, runs post-merge checks, then commits and records the merge. It pushes only when `push = true`.
 
-`new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If the manifest does not know the feature, teardown still recognizes the conventional `.worktrees/my-feature` path, derives its actual branch, and applies the same Git safety checks. It skips configured teardown commands for that fallback because their recorded environment is unavailable. Merged and patch-equivalent branches are safe to remove normally. If the worktree has uncommitted changes, the branch has patches absent from the target history, or an unmanaged worktree is detached, pass `--force` to abandon it deliberately. Branch ranges containing merge commits remain `unmerged` because `git cherry` cannot account for novel conflict resolutions.
+If the merge, post-merge checks, commit, or bookkeeping fails, the command attempts to restore the target's original clean revision and removes non-ignored untracked files created there. It reports a rollback failure if restoration fails. This does not undo external effects such as database changes made by lifecycle commands. A push failure leaves the successful local merge recorded; rerun the same merge command to retry the push while the feature remains integrated. Failed pre- and post-merge commands retain their combined output under `.new-feature/diagnostics/merge-failures/<feature>/`; the error prints the exact log path. A successful merge prints a reminder to run teardown; it does not remove the feature worktree.
+
+`new-feature teardown my-feature` runs the configured teardown commands before removing the worktree, deleting the branch, and removing the manifest entry. If a teardown command fails, removal stops, including with `--force`. If the manifest does not know the feature, teardown still recognizes the conventional `.worktrees/my-feature` path, derives its actual branch, and applies the same Git safety checks. It skips configured teardown commands for that fallback because their recorded environment is unavailable. Merged and patch-equivalent branches are safe to remove normally. If the worktree has uncommitted changes, the branch has patches absent from the target history, or an unmanaged worktree is detached, pass `--force` to abandon it deliberately. Branch ranges containing unmerged merge commits remain `unmerged` because patch comparison cannot account for novel conflict resolutions.
 
 ## Agent hooks
 

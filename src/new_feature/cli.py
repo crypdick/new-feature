@@ -187,7 +187,7 @@ def _create(
                     branch=branch,
                     worktree=str(worktree.relative_to(root)),
                     target_branch=config.target_branch,
-                    # NOTE: README.md documents setup readiness and interrupted creation.
+                    # NOTE: docs/ARCHITECTURE.md documents setup readiness and operation locks.
                     status="initializing",
                     created_at=now(),
                     config_fingerprint=config_fingerprint(config),
@@ -278,7 +278,7 @@ def _merge_target(root: Path, config: ProjectConfig, key: str, record: FeatureRe
             raise NewFeatureError(
                 "target checkout has uncommitted changes; commit or stash them before merging"
             )
-        # NOTE: README.md requires target checkout selection before rollback ownership.
+        # NOTE: docs/ARCHITECTURE.md requires target selection before rollback ownership.
         checkout_target(root, target_branch=record.target_branch)
         target_revision = resolve_revision(root, "HEAD")
         try:

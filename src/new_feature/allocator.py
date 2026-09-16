@@ -32,6 +32,7 @@ def allocate_env(
     repo_root: Path,
 ) -> dict[str, str]:
     """Allocate the environment exported to a feature's setup and agent processes."""
+    # NOTE: README.md documents exported variables and the scope of allocator reservations.
     env = {
         "NEW_FEATURE_NAME": name,
         "NEW_FEATURE_SLUG": slug,

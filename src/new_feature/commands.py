@@ -21,6 +21,7 @@ def run_commands(
     commands: list[str], *, cwd: Path, env: dict[str, str], failure_log: Path | None = None
 ) -> None:
     """Run commands sequentially and raise when any command fails."""
+    # NOTE: README.md documents sequential shell commands and their allocated environment.
     process_env = {**git_environment(), **env}
     if failure_log is None:
         for command in commands:
