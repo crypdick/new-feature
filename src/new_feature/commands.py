@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TextIO
 
 from new_feature.errors import NewFeatureError
+from new_feature.git import git_environment
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ def run_commands(
     commands: list[str], *, cwd: Path, env: dict[str, str], failure_log: Path | None = None
 ) -> None:
     """Run commands sequentially and raise when any command fails."""
-    process_env = {**os.environ, **env}
+    process_env = {**git_environment(), **env}
     if failure_log is None:
         for command in commands:
             returncode = _run_command(command, cwd=cwd, env=process_env)

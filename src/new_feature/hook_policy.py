@@ -11,6 +11,7 @@ from typing import NewType
 
 from new_feature.config import load_project_config
 from new_feature.errors import NewFeatureError
+from new_feature.git import git_environment
 
 BranchName = NewType("BranchName", str)
 WorktreeAction = NewType("WorktreeAction", str)
@@ -260,6 +261,7 @@ def _git_output(path: Path, *args: str) -> str | None:
         stderr=subprocess.DEVNULL,
         text=True,
         check=False,
+        env=git_environment(),
     )
     if result.returncode != 0:
         return None
