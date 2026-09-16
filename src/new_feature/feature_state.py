@@ -35,6 +35,7 @@ class FeatureState:
     integration: IntegrationState | None
     config_drift: bool
     setup_incomplete: bool = False
+    worktree_error: str | None = None
 
     @property
     def stale(self) -> bool:
@@ -48,6 +49,8 @@ class FeatureState:
             issues.append("setup-incomplete")
         if not self.worktree_exists:
             issues.append("missing-worktree")
+        if self.worktree_error is not None:
+            issues.append("worktree-error")
         if not self.branch_exists:
             issues.append("missing-branch")
         if self.clean is False:
@@ -84,7 +87,13 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
     worktree = root / record.worktree
     worktree_exists = worktree.is_dir()
     local_branch_exists = branch_exists(root, record.branch)
-    clean = worktree_is_clean(worktree) if worktree_exists else None
+    clean = None
+    worktree_error = None
+    try:
+        clean = worktree_is_clean(worktree) if worktree_exists else None
+    except NewFeatureError as exc:
+        # NOTE: README.md documents non-destructive inspection of unreadable worktrees.
+        worktree_error = str(exc)
     integration = (
         inspect_integration(root, branch=record.branch, target_branch=record.target_branch)
         if local_branch_exists
@@ -95,6 +104,7 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
         worktree_exists=worktree_exists,
         branch_exists=local_branch_exists,
         clean=clean,
+        worktree_error=worktree_error,
         integration=integration,
         config_drift=bool(record.config_fingerprint) and record.config_fingerprint != current_fingerprint,
     )

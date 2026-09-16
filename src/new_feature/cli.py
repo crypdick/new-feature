@@ -395,6 +395,8 @@ def _list_features(root: Path) -> int:
     for record in sorted(manifest.features.values(), key=lambda item: item.slug):
         state = inspect_feature(root, record, fingerprint)
         print(f"{record.slug}\t{state.describe()}\t{record.branch}\t{record.worktree}")
+        if state.worktree_error is not None:
+            print(f"new-feature: {record.slug}: {state.worktree_error}", file=sys.stderr)
     return 0
 
 
@@ -405,6 +407,8 @@ def _doctor(root: Path, *, repair: bool) -> int:
     states = {key: inspect_feature(root, record, fingerprint) for key, record in manifest.features.items()}
     for key, state in sorted(states.items()):
         print(f"{manifest.features[key].slug}: {state.describe()}")
+        if state.worktree_error is not None:
+            print(f"new-feature: {manifest.features[key].slug}: {state.worktree_error}", file=sys.stderr)
 
     repaired: set[str] = set()
     if repair:
