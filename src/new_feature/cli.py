@@ -310,7 +310,7 @@ def _merge(root: Path, name: str) -> int:
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
     with target_merge_lock(root):
-        # NOTE: README.md documents Git-derived integration and push-only retries.
+        # NOTE: docs/ARCHITECTURE.md documents Git-derived integration; README.md covers push retries.
         if is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
             if record.status != "merged":
                 _record_status(root, key, status="merged")
@@ -343,7 +343,7 @@ def _teardown(root: Path, name: str, *, force: bool) -> int:
         manifest = load_manifest(root)
         record = manifest.features.get(key)
     if record is None:
-        # NOTE: README.md's Lifecycle section documents this constrained unmanaged path.
+        # NOTE: README.md documents teardown without a manifest entry.
         worktree = root / ".worktrees" / slug
         if not worktree.is_dir():
             raise NewFeatureError(f"unknown feature: {name}")

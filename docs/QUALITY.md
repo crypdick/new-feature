@@ -1,21 +1,17 @@
 # Quality
 
-This page describes checks for contributors to `new-feature`.
+Run the same checks used in pull requests and releases:
 
-`uv run prek run --all-files` is the canonical aggregate quality gate used locally,
-in pull requests, and before publishing a release. Some checks automatically format
-files; review their changes and rerun the gate when needed.
+```bash
+uv run prek run --all-files
+```
 
-The gate includes:
+The gate runs linting, formatting, type checks, dependency checks, secret scanning,
+package checks, pytest, and a strict MkDocs build. Tests require 100% package coverage
+with branch measurement enabled. Inspect automatic formatting changes and rerun as needed.
 
-- Ruff linting and formatting, mypy, vulture, and deptry.
-- Secret scanning, file hygiene, package metadata, and source-distribution checks.
-- Repository-local checks for exception handling, file length, and private imports in tests.
-- pytest with parallel workers, timeouts, and a 100% package coverage threshold,
-  with branch measurement enabled.
-- A strict MkDocs build, including generated Python module documentation.
+`prek.toml` defines the checks. `pyproject.toml` holds their settings and coverage
+exclusions. Package imports also enable beartype runtime checks.
 
-`prek.toml` defines the checks; `pyproject.toml` defines their tool settings and
-coverage exclusions. Package imports also enable beartype runtime checks. Test
-observable behavior through public interfaces; meeting a coverage threshold alone
-does not establish correctness.
+Test observable behavior through public interfaces. Coverage alone doesn't establish
+correctness.

@@ -92,7 +92,7 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
     try:
         clean = worktree_is_clean(worktree) if worktree_exists else None
     except NewFeatureError as exc:
-        # NOTE: README.md documents non-destructive inspection of unreadable worktrees.
+        # NOTE: docs/ARCHITECTURE.md documents inspection of unreadable worktrees.
         worktree_error = str(exc)
     integration = (
         inspect_integration(root, branch=record.branch, target_branch=record.target_branch)

@@ -66,28 +66,14 @@ def test_status_is_an_alias_for_list():
     assert args.command == "list"
 
 
-def test_top_level_help_explains_agent_workflow():
+def test_top_level_help_explains_workflow_and_links_reference():
     help_text = build_parser().format_help()
 
-    assert "Workflow for an already-running coding agent:" in help_text
-    assert "new-feature create NAME --no-agent" in help_text
+    assert "--no-agent" in help_text
     assert "new-feature COMMAND --help" in help_text
-    assert ".new-feature.toml" in help_text
-    assert ".new-feature.local.toml" in help_text
-    assert "~/.config/new-feature/config.toml" in help_text
-    assert "$XDG_CONFIG_HOME/new-feature/config.toml" in help_text
-    assert "*.local.toml" in help_text
+    assert "https://crypdick.github.io/new-feature/" in help_text
     assert "--version" in help_text
-    assert "[tool.new-feature]" in help_text
-    assert "create_prompt" in help_text
-    assert "setup_prompt" in help_text
-    assert 'WEB_PORT = { allocate = "port"' in help_text
-    assert "Configured commands are shell strings run sequentially" in help_text
-    assert "NEW_FEATURE_WORKTREE" in help_text
-    assert "cannot be exported into the already-running caller" in help_text
-    assert "Worktree ready: ABSOLUTE_PATH" in help_text
-    assert "Next: cd -- SHELL_QUOTED_ABSOLUTE_PATH" in help_text
-    assert "Run lifecycle commands from the control checkout" in help_text
+    assert "original checkout" in help_text
     assert "merge" in help_text
     assert "teardown" in help_text
     assert "setup" in help_text
@@ -98,14 +84,14 @@ def test_top_level_help_explains_agent_workflow():
 @pytest.mark.parametrize(
     ("command", "expected"),
     [
-        ("create", 'agents = { custom = ["custom-agent", "--prompt"] }'),
-        ("setup", "*.local.toml ignore rules"),
-        ("merge", "Run this command from the control checkout"),
-        ("teardown", ".worktrees/SLUG"),
-        ("list", "owns .new-feature/manifest.toml"),
-        ("doctor", "owns .new-feature/manifest.toml"),
-        ("install-codex-hook", "Unrelated repository hooks are"),
-        ("install-claude-hook", "Unrelated settings and hooks are"),
+        ("create", "--no-agent"),
+        ("setup", "--agent"),
+        ("merge", "clean feature and target checkouts"),
+        ("teardown", "discard uncommitted changes and unmerged feature commits"),
+        ("list", "original checkout"),
+        ("doctor", "never deletes unmerged work"),
+        ("install-codex-hook", "Restart Codex"),
+        ("install-claude-hook", "Restart Claude Code"),
     ],
 )
 def test_subcommand_help_explains_effects_and_safety(command: str, expected: str, capsys):
@@ -113,7 +99,8 @@ def test_subcommand_help_explains_effects_and_safety(command: str, expected: str
         parse_args([command, "--help"])
 
     assert exc_info.value.code == 0
-    assert expected in capsys.readouterr().out
+    help_text = capsys.readouterr().out
+    assert expected in help_text
 
 
 def test_slugify_normalizes_descriptive_name():
@@ -124,6 +111,7 @@ def test_setup_prompt_requires_inspection_approval_and_optional_hook_choice():
     prompt = build_setup_prompt()
 
     assert "Start by running `new-feature --help`" in prompt
+    assert "read its linked configuration guide" in prompt
     assert "existing `.new-feature.toml`, `.new-feature.local.toml`, or `[tool.new-feature]`" in prompt
     assert "Recommend the ignored `.new-feature.local.toml` sidecar" in prompt
     assert "Present a concise proposed plan" in prompt

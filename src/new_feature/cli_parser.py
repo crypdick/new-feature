@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser for every supported lifecycle command."""
     parser = argparse.ArgumentParser(
         prog="new-feature",
-        description=("Manage the full lifecycle of isolated feature worktrees and their coding agents."),
+        description="Create, merge, and clean up isolated feature worktrees.",
         epilog=TOP_LEVEL_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -54,23 +54,23 @@ def build_parser() -> argparse.ArgumentParser:
     agent_selection.add_argument(
         "--no-agent",
         action="store_true",
-        help="set up the feature without spawning the configured agent subprocess",
+        help="skip launching an agent",
     )
     agent_selection.add_argument(
         "--agent",
         metavar="COMMAND",
-        help="use a configured agent name or an executable command for this invocation",
+        help="agent name or executable command",
     )
     create.add_argument(
         "--dry-run",
         action="store_true",
-        help="print allocated environment values without modifying the repository",
+        help="print environment values without creating or reserving anything",
     )
     create.add_argument(
         "--prompt",
         metavar="TEXT",
         type=_prompt,
-        help="replace the configured or generated prompt passed to the agent",
+        help="override the agent prompt",
     )
     create.set_defaults(command="create")
 
@@ -84,13 +84,13 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument(
         "--agent",
         metavar="COMMAND",
-        help="use a configured agent name or an executable command for this invocation",
+        help="agent name or executable command",
     )
     setup.add_argument(
         "--prompt",
         metavar="TEXT",
         type=_prompt,
-        help="replace the configured or generated prompt passed to the agent",
+        help="override the agent prompt",
     )
     setup.set_defaults(command="setup")
 
@@ -118,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     teardown.add_argument(
         "name",
         metavar="NAME",
-        help="managed feature name, or slug of an unmanaged .worktrees/SLUG worktree",
+        help="feature name or worktree slug",
     )
     teardown.add_argument(
         "--force",
@@ -138,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser(
         "doctor",
-        help="diagnose manifest, worktree, and branch consistency",
+        help="find stale state and configuration drift",
         description=DOCTOR_DESCRIPTION,
         epilog="Example:\n  new-feature doctor\n  new-feature doctor --repair",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -146,40 +146,34 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument(
         "--repair",
         action="store_true",
-        help="remove manifest entries whose worktree and branch are both already gone",
+        help="remove stale records and integrated branches with missing worktrees",
     )
     doctor.set_defaults(command="doctor")
 
     install_codex = subparsers.add_parser(
         "install-codex-hook",
-        help="install the Codex worktree guard for this repository or globally",
+        help="install the Codex worktree guard",
         description=INSTALL_CODEX_HOOK_DESCRIPTION,
-        epilog=(
-            "Examples:\n"
-            "  new-feature install-codex-hook\n"
-            "  new-feature install-codex-hook --global\n\n"
-            "After installation, restart Codex and use `/hooks` to review and trust it."
-        ),
+        epilog=("Examples:\n  new-feature install-codex-hook\n  new-feature install-codex-hook --global"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     install_codex.add_argument(
         "--global",
         dest="global_scope",
         action="store_true",
-        help="install into ~/.codex/hooks.json so the guard covers every repository on this machine",
+        help="install in ~/.codex/hooks.json for all managed repositories",
     )
     install_codex.set_defaults(command="install-codex-hook", local_scope=False)
 
     install_claude = subparsers.add_parser(
         "install-claude-hook",
-        help="install the Claude Code worktree guard for this repository or globally",
+        help="install the Claude Code worktree guard",
         description=INSTALL_CLAUDE_HOOK_DESCRIPTION,
         epilog=(
             "Examples:\n"
             "  new-feature install-claude-hook\n"
             "  new-feature install-claude-hook --local\n"
-            "  new-feature install-claude-hook --global\n\n"
-            "After installation, restart Claude Code so the session reloads its hooks."
+            "  new-feature install-claude-hook --global"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -188,13 +182,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--global",
         dest="global_scope",
         action="store_true",
-        help="install into ~/.claude/settings.json so the guard covers every repository on this machine",
+        help="install in ~/.claude/settings.json for all managed repositories",
     )
     claude_scope.add_argument(
         "--local",
         dest="local_scope",
         action="store_true",
-        help="install into .claude/settings.local.json, the personal gitignored settings file",
+        help="install in ignored .claude/settings.local.json",
     )
     install_claude.set_defaults(command="install-claude-hook")
 
