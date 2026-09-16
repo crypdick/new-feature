@@ -230,6 +230,7 @@ def _allocated_env_spec(key: str, raw: RawTable) -> EnvSpec:
 
 
 def _parse_allocator(key: str, allocator: str, raw: RawTable) -> EnvSpec:
+    # NOTE: README.md documents the default port and integer allocation bounds.
     match allocator:
         case "port":
             minimum, maximum = _bounds(key, raw, default_minimum=1024, default_maximum=65535)

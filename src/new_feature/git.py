@@ -218,7 +218,7 @@ def _git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedPr
 
 def git_environment() -> dict[str, str]:
     """Keep transport settings but discard the caller's repository context."""
-    # NOTE: README.md documents isolation for Git, lifecycle commands, and agents.
+    # NOTE: docs/ARCHITECTURE.md documents isolation for Git, lifecycle commands, and agents.
     env = os.environ.copy()
     for key in (
         "GIT_DIR",

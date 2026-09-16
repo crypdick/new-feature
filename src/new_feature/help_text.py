@@ -1,243 +1,84 @@
-"""Define reusable help text for the command-line interface."""
+"""Define help text for the command-line interface."""
 
 from __future__ import annotations
 
-_CONFIGURATION_GUIDE = """\
-Configuration: put shared repository policy in .new-feature.toml, or in
-[tool.new-feature] in pyproject.toml:
-  target_branch = "main"           # branch each feature starts from and merges into
-  setup = ["uv sync"]              # run in the feature worktree after creation
-  pre_merge = ["uv run pytest"]    # run in the feature worktree before merging
-  post_merge = ["uv run pytest"]   # run in the control checkout after merging
-  teardown = []                    # run in the feature worktree before removal
+TOP_LEVEL_EPILOG = """\
+Workflow:
+  new-feature my-feature --no-agent
+  cd .worktrees/my-feature          # edit and commit here
+  cd ../..                         # return to the repository root
+  new-feature merge my-feature
+  new-feature teardown my-feature
 
-  [env]
-  WEB_PORT = { allocate = "port", min = 3000, max = 3999 }
-  WORKER_ID = { allocate = "integer", min = 1, max = 20 }
-  DATABASE_NAME = { allocate = "name", prefix = "myapp", max_length = 63 }
-  CACHE_NAMESPACE = { allocate = "slug", prefix = "myapp" }
-  CACHE_DIR = { allocate = "path", base = ".new-feature/cache" }
-  APP_ENV = { value = "development" }
+Use --agent codex or --agent claude to launch an agent in the worktree.
+Run lifecycle commands from the original checkout.
+new-feature NAME is shorthand for new-feature create NAME.
 
-Put personal preferences in the ignored .new-feature.local.toml sidecar:
-  default_agent = "codex"          # selected when --agent is omitted
-  pull_before_create = true         # fast-forward target before creating a worktree
-  push = true                       # push target_branch after a successful merge
-  agents = { custom = ["custom-agent", "--prompt"] }
-
-Set one default agent across repositories in ~/.config/new-feature/config.toml:
-  default_agent = "codex"
-
-When XDG_CONFIG_HOME is set, new-feature uses $XDG_CONFIG_HOME/new-feature/config.toml.
-Only default_agent is accepted globally. Repository shared config overrides the global value;
-.new-feature.local.toml overrides both.
-
-All settings are optional. The defaults are target_branch = "main", no default agent,
-built-in codex and claude aliases, pull_before_create = false, push = false, and empty command
-and environment lists.
-Without default_agent, feature creation does not launch an interactive agent. Built-in create
-and setup prompts can be overridden with create_prompt and setup_prompt in TOML, or for one
-invocation with --prompt TEXT.
-
-new-feature loads the optional global default_agent, resolves .new-feature.toml over
-pyproject.toml, then overlays
-.new-feature.local.toml. A local scalar or command list replaces its shared value; agents and
-env entries overlay by name. The local sidecar uses the standalone syntax above, even when the
-shared configuration is in pyproject.toml. For pyproject.toml, place shared env values under
-[tool.new-feature.env] instead of [env].
-
-default_agent, pull_before_create, and push are supported in shared config when a repository
-deliberately requires them, but local placement is recommended. new-feature setup and feature
-creation add *.local.toml to Git\'s local info/exclude without editing tracked files.
-
-Configured commands are shell strings run sequentially. They receive the allocated
-environment plus NEW_FEATURE_NAME, NEW_FEATURE_SLUG, NEW_FEATURE_BRANCH,
-NEW_FEATURE_WORKTREE, and NEW_FEATURE_REPO_ROOT. A nonzero command stops the operation.
-
-Allocator forms:
-  { value = "TEXT" }                            fixed string
-  { allocate = "port", min = N, max = N }      available, unreserved TCP port
-  { allocate = "integer", min = N, max = N }   unreserved integer
-  { allocate = "name", prefix = "P", max_length = N }
-                                                   deterministic identifier with hash
-  { allocate = "slug", prefix = "P" }          prefix-feature-slug
-  { allocate = "path", base = "PATH" }         PATH/feature-slug
-
-port defaults to 1024..65535; integer defaults to 0..65535. Allocated values are
-reserved per managed feature in .new-feature/manifest.toml.
+Options: new-feature COMMAND --help
+Configuration and docs: https://crypdick.github.io/new-feature/
 """
-
-_AGENT_WORKFLOW = """\
-Workflow for an already-running coding agent:
-  1. Inspect .new-feature.toml, .new-feature.local.toml, or pyproject.toml and add
-     configuration if the project needs setup, checks, cleanup, a different target branch,
-     isolated runtime values, or personal agent preferences.
-  2. From the control checkout, run: new-feature create NAME --no-agent
-  3. Use the printed absolute worktree path as the working directory for subsequent tools,
-     then do all implementation and commits inside that worktree.
-  4. Return to the control checkout and run: new-feature merge SLUG
-  5. After a successful merge, run: new-feature teardown SLUG
-
---no-agent prevents a nested coding-agent subprocess. Setup still receives allocated
-environment variables, but they cannot be exported into the already-running caller.
-Read .new-feature/manifest.toml and export any values needed by later manual commands.
-
-After a successful create that does not launch an agent, new-feature prints:
-  Worktree ready: ABSOLUTE_PATH
-  Next: cd -- SHELL_QUOTED_ABSOLUTE_PATH
-The CLI cannot change its parent shell's or an already-running coding agent's working
-directory. In an interactive shell, run the printed command; an existing coding agent
-uses the printed absolute path as its working directory for subsequent tools.
-
-Run lifecycle commands from the control checkout: its .new-feature/manifest.toml owns
-the managed-feature records. The feature worktree is for implementation work.
-"""
-
-_STATE_GUIDE = """\
-Managed state and safety:
-  - setup adds generated-state and *.local.toml ignore rules, then launches an agent when selected.
-  - install-codex-hook and install-claude-hook enforce the managed worktree workflow.
-  - Worktrees live at .worktrees/SLUG and branches are named SLUG.
-  - .new-feature/, .worktrees/, and *.local.toml are automatically added to Git\'s local info/exclude without editing tracked files.
-  - Setup failure triggers forced cleanup of the partial feature.
-  - pull_before_create fast-forwards the clean target checkout before creating a new worktree.
-  - merge requires clean feature and target checkouts, rejects predicted conflicts, and aborts failed merges.
-  - teardown accepts merged and patch-equivalent branches, and refuses to discard dirty or
-    unmerged work unless --force is supplied.
-  - list shows paths and state; doctor diagnoses stale state and configuration drift.
-"""
-
-TOP_LEVEL_EPILOG = f"""\
-{_AGENT_WORKFLOW}
-
-The short form `new-feature NAME` is equivalent to `new-feature create NAME`.
-Run `new-feature COMMAND --help` for command-specific effects and examples.
-
-{_CONFIGURATION_GUIDE}
-
-{_STATE_GUIDE}"""
 
 CREATE_DESCRIPTION = """\
-Create an isolated feature branch and worktree, allocate its configured environment,
-run project setup commands, and optionally launch the selected interactive coding agent.
-
-The worktree is created at .worktrees/SLUG from the configured target branch. Runtime
-values are reserved in .new-feature/manifest.toml. If setup fails, new-feature attempts
-a forced teardown so a partial feature does not linger. Repeating create for an active
-feature reuses its worktree and environment without rerunning setup.
-
-When creation succeeds without launching an agent, new-feature prints the worktree's
-absolute path and a copy-pasteable `Next: cd -- ...` command. The path in that command
-is shell-quoted when necessary.
+Create a feature worktree, allocate its environment, and run setup.
+Repeating an active name reuses the worktree without rerunning setup.
+Tear down a merged feature before reusing its name.
+An agent launches only with --agent or a configured default_agent.
 """
 
-CREATE_EPILOG = f"""\
+CREATE_EPILOG = """\
 Examples:
-  new-feature create "Add billing webhooks"
-  new-feature "Add billing webhooks" --no-agent
-  new-feature create billing-webhooks --dry-run
+  new-feature my-feature --agent codex
+  new-feature my-feature --no-agent
+  new-feature create my-feature --dry-run
 
-If you are already a coding agent, use --no-agent to prevent spawning another agent in
-a subprocess. Setup still runs for a new feature; then work inside .worktrees/SLUG yourself.
-For an existing active feature, creation skips setup and reopens the existing worktree.
---dry-run prints proposed values for a new feature or recorded values for an existing
-feature, and does not create or reserve anything.
-
-Without default_agent or --agent, creation stops after setup and does not launch an agent.
-The selected agent command is an argv prefix. new-feature appends its generated feature prompt as
-the final argument and launches the command in the worktree with the allocated environment.
-Use --agent codex or --agent claude without configuration, a configured NAME, or an executable
-command directly. For a personal agent requiring a prompt flag, use in .new-feature.local.toml:
-  default_agent = "custom"
-  agents = {{ custom = ["custom-agent", "--prompt"] }}
-
-{_CONFIGURATION_GUIDE}"""
+Use --no-agent inside an existing agent session. Work in the printed path.
+Run this command from the original checkout.
+"""
 
 SETUP_DESCRIPTION = """\
-Launch the configured coding agent in the current repository to set up or improve its
-new-feature integration. With no default_agent, pass --agent codex or --agent claude.
-
-The agent starts by reading `new-feature --help` and inspecting the repository and any
-existing .new-feature.toml, .new-feature.local.toml, or [tool.new-feature] configuration. It proposes a
-repository-specific plan, interviews you about unresolved choices, and asks whether to
-install the optional Codex or Claude Code hook before making changes. The command ensures
-generated-state and *.local.toml ignore rules, then only launches the agent; it does not
-create a worktree or install the hooks itself.
+Launch an agent to configure this repository. Select one with --agent or default_agent.
+Setup adds local ignore rules. The agent asks for approval before further edits
+or installing optional hooks.
 """
 
 INSTALL_CODEX_HOOK_DESCRIPTION = """\
-Install or update the Codex PreToolUse guard in .codex/hooks.json.
-
-The guard denies Codex direct Write, Edit, and apply_patch operations on the configured
-target branch. It also denies raw `git worktree add` and `git worktree remove` commands
-so Codex uses the managed new-feature lifecycle. Unrelated repository hooks are
-preserved, while an installed new-feature or legacy worktree guard is replaced.
-
-By default the guard is installed in the current repository. With --global it is
-installed in ~/.codex/hooks.json instead and covers every repository on this machine;
-the guard allows any operation outside a new-feature-managed repository.
-
-The hook runs `new-feature codex-hook`, so new-feature must remain available on PATH.
-Codex applies repository hooks only after the repository is trusted. Restart Codex after
-installation, then use `/hooks` to review and trust the guard.
+Install the target-branch and managed-worktree guard in .codex/hooks.json.
+Block direct edits on the target branch and require worktree creation and removal
+through new-feature.
+Other hooks stay unchanged. Keep new-feature on PATH.
+Restart Codex, then review and trust the guard with /hooks.
 """
 
 INSTALL_CLAUDE_HOOK_DESCRIPTION = """\
-Install or update the Claude Code PreToolUse guard in .claude/settings.json.
-
-The guard denies Claude Code direct Write, Edit, MultiEdit, and NotebookEdit operations
-on the configured target branch. It also denies raw `git worktree add` and
-`git worktree remove` commands so Claude Code uses the managed new-feature lifecycle.
-Unrelated settings and hooks are preserved, while an installed new-feature guard is
-replaced.
-
-By default the guard is installed in the current repository's shared settings. With
---local it goes to .claude/settings.local.json, the personal gitignored settings file.
-With --global it goes to ~/.claude/settings.json instead and covers every repository on
-this machine; the guard allows any operation outside a new-feature-managed repository.
-
-The hook runs `new-feature claude-hook`, so new-feature must remain available on PATH.
-Claude Code loads hooks at session start, so restart Claude Code after installation and
-review the loaded hooks with `/hooks`.
+Install the target-branch and managed-worktree guard in .claude/settings.json.
+Block direct edits on the target branch and require worktree creation and removal
+through new-feature.
+Other settings and hooks stay unchanged. Keep new-feature on PATH.
+Restart Claude Code, then review the guard with /hooks.
 """
 
 MERGE_DESCRIPTION = """\
-Merge a managed feature into its configured target branch.
-
-This requires a clean feature worktree and rejects a predicted conflict before pre-merge
-commands run. A second merge or teardown for the same feature fails while its lifecycle
-is in progress. Different features can run checks concurrently, but target checkout
-validation, merge, post-merge commands, commit, and optional push are serialized. The
-merge is committed only when all checks pass. It is pushed only when push = true in the
-resolved configuration. A failed merge or check is aborted.
-
-Run this command from the control checkout, not from the feature worktree.
+Check and merge a feature into its target branch. Requires clean feature and target checkouts.
+Failed checks stop the merge. The command pushes only when push = true.
+Run from the original checkout, then use teardown to remove the worktree.
 """
 
 TEARDOWN_DESCRIPTION = """\
-Run configured teardown commands, then remove a managed worktree, its feature branch,
-and its manifest entry. If no manifest entry exists, teardown can still remove the
-conventional .worktrees/SLUG worktree and its branch; configured teardown commands are
-skipped because their recorded environment is unavailable.
-
-By default, teardown refuses to discard uncommitted changes or commits whose patches are
-not represented in the target branch history. --force deliberately bypasses both
-protections. Run this command from the control checkout, not from the feature worktree.
+Run cleanup, then remove the worktree and branch. Refuse dirty or unmerged work
+unless --force is supplied. Cleanup failure stops removal even with --force.
+Without a manifest entry, .worktrees/NAME can still be removed, but configured
+cleanup is skipped because its environment is unavailable.
+Run from the original checkout.
 """
 
 LIST_DESCRIPTION = """\
-List every managed feature with its state, branch, and worktree path.
-
-State includes lifecycle status and detected conditions such as a missing worktree,
-missing branch, dirty worktree, patch-equivalent or unmerged commits, and configuration
-drift. Run this command from the control checkout that owns .new-feature/manifest.toml.
+Show managed features, their state, branches, and worktree paths.
+Run from the original checkout.
 """
 
 DOCTOR_DESCRIPTION = """\
-Diagnose manifest, Git branch, worktree, and project-configuration consistency.
-
-The command exits nonzero while issues remain. --repair removes a stale manifest entry
-when both its worktree and branch are already gone. It also removes a missing worktree's
-branch only after confirming that the branch is merged or patch-equivalent; it does not
-discard work. Run this command from the control checkout that owns .new-feature/manifest.toml.
+Find stale records, missing branches or worktrees, and configuration drift.
+Exit nonzero while issues remain. Repair never deletes unmerged work.
+Repair removes stale state; it does not recreate missing worktrees.
+Run from the original checkout.
 """

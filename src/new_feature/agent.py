@@ -45,7 +45,8 @@ def build_setup_prompt() -> str:
     """Return the repository-configuration prompt for a coding agent."""
     return (
         "Set up or improve this repository's integration with the `new-feature` tool. "
-        "Start by running `new-feature --help`, then inspect the local repository and any "
+        "Start by running `new-feature --help`, read its linked configuration guide, "
+        "then inspect the local repository and any "
         "existing `.new-feature.toml`, `.new-feature.local.toml`, or `[tool.new-feature]` "
         "configuration. Infer the appropriate shared target branch, setup and teardown "
         "commands, pre-merge and post-merge checks, and isolated environment allocations. "
