@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -24,5 +25,6 @@ def init_git_repo(path: Path, pyproject: str | None = None) -> None:
 
 @pytest.fixture(autouse=True)
 def clean_git_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-        monkeypatch.delenv(key, raising=False)
+    for key in os.environ:
+        if key.startswith("GIT_"):
+            monkeypatch.delenv(key)

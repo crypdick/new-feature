@@ -141,6 +141,12 @@ Supported env entries:
 
 ## Lifecycle
 
+Git operations, hook policy probes, lifecycle commands, and launched agents discard
+inherited repository-location, index, and object-directory overrides such as
+`GIT_DIR` and `GIT_COMMON_DIR`. Their working directory selects the repository,
+even when invoked from a Git hook. Transport and authentication settings remain
+available; explicitly configured lifecycle environment values still take precedence.
+
 Merge completion is determined from Git ancestry, including empty features and features merged outside this tool. Already-integrated branches update manifest bookkeeping without running checks or creating another commit. Repeat merges inspect the current branch and require a clean feature worktree. If commits were added after a successful merge, the command runs the full checks and merges those commits. A push-only retry applies only while the branch remains included in the target history.
 
 `new-feature my-feature` creates branch `my-feature` and worktree `.worktrees/my-feature`, reserves env values in `.new-feature/manifest.toml`, runs setup, and launches an agent only when `default_agent` or `--agent` selects one. With `pull_before_create = true`, it first runs a fast-forward-only pull on the clean, checked-out target branch. It automatically adds `.new-feature/`, `.worktrees/`, and `*.local.toml` to Git’s local `info/exclude`, preserving a clean target checkout. Existing local exclude rules are retained. If setup fails or is interrupted, it stops the command's process group and runs a forced teardown so the partial worktree, branch, manifest entry, and child processes do not linger.

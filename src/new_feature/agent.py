@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import shlex
 import subprocess
 from dataclasses import dataclass
@@ -10,6 +9,7 @@ from pathlib import Path
 
 from new_feature.config import AgentCommand, ProjectConfig
 from new_feature.errors import NewFeatureError
+from new_feature.git import git_environment
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,6 @@ def resolve_agent(config: ProjectConfig, override: str | None) -> AgentCommand |
 def launch_interactive_agent(agent: AgentCommand, worktree: Path, env: dict[str, str], prompt: str) -> int:
     """Launch an agent in a worktree with its allocated environment and prompt."""
     try:
-        return subprocess.call([*agent, prompt], cwd=worktree, env={**os.environ, **env})
+        return subprocess.call([*agent, prompt], cwd=worktree, env={**git_environment(), **env})
     except OSError as exc:
         raise NewFeatureError(f"agent command failed: {exc}") from exc

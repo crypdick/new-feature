@@ -24,7 +24,12 @@ def local_exclude_path(root: Path) -> Path:
 def ensure_repo_has_commits(root: Path) -> None:
     """Raise when the repository has no commit that can seed a worktree."""
     result = subprocess.run(
-        ["git", "rev-parse", "--verify", "HEAD"], cwd=root, capture_output=True, text=True, check=False
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=git_environment(),
     )
     if result.returncode != 0:
         raise NewFeatureError("repository has no commits; make an initial commit before creating worktrees")
@@ -67,7 +72,7 @@ def branch_exists(root: Path, branch: str) -> bool:
         ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
         cwd=root,
         check=False,
-        env=_git_env(),
+        env=git_environment(),
     )
     if result.returncode not in {0, 1}:
         raise NewFeatureError(f"git command failed while checking branch: {branch}")
@@ -80,7 +85,7 @@ def is_branch_merged(root: Path, *, branch: str, target_branch: str) -> bool:
         ["git", "merge-base", "--is-ancestor", branch, target_branch],
         cwd=root,
         check=False,
-        env=_git_env(),
+        env=git_environment(),
     )
     if result.returncode not in {0, 1}:
         raise NewFeatureError(f"git command failed while comparing {branch} with {target_branch}")
@@ -114,7 +119,7 @@ def merge_is_clean(root: Path, *, branch: str, target_branch: str) -> bool:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
-        env=_git_env(),
+        env=git_environment(),
     )
     if result.returncode not in {0, 1}:
         raise NewFeatureError(f"git command failed while checking merge of {branch} into {target_branch}")
@@ -201,7 +206,7 @@ def remove_worktree_and_branch(
 def _git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
     try:
         result = subprocess.run(
-            ["git", *args], cwd=cwd, text=True, capture_output=capture, check=False, env=_git_env()
+            ["git", *args], cwd=cwd, text=True, capture_output=capture, check=False, env=git_environment()
         )
     except OSError as exc:
         raise NewFeatureError(f"git command failed: {exc}") from exc
@@ -211,8 +216,21 @@ def _git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedPr
     return result
 
 
-def _git_env() -> dict[str, str]:
+def git_environment() -> dict[str, str]:
+    """Keep transport settings but discard the caller's repository context."""
+    # NOTE: README.md documents isolation for Git, lifecycle commands, and agents.
     env = os.environ.copy()
-    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+    for key in (
+        "GIT_DIR",
+        "GIT_COMMON_DIR",
+        "GIT_WORK_TREE",
+        "GIT_IMPLICIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_GRAFT_FILE",
+        "GIT_SHALLOW_FILE",
+        "GIT_PREFIX",
+    ):
         env.pop(key, None)
     return env
