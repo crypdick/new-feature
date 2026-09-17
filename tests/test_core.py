@@ -71,7 +71,7 @@ def test_top_level_help_explains_workflow_and_links_reference():
 
     assert "--no-agent" in help_text
     assert "new-feature COMMAND --help" in help_text
-    assert "https://crypdick.github.io/new-feature/" in help_text
+    assert "https://new-feature.ricardodecal.com/" in help_text
     assert "--version" in help_text
     assert "original checkout" in help_text
     assert "merge" in help_text
