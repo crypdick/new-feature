@@ -15,7 +15,7 @@ Run lifecycle commands from the original checkout.
 new-feature NAME is shorthand for new-feature create NAME.
 
 Options: new-feature COMMAND --help
-Configuration and docs: https://crypdick.github.io/new-feature/
+Configuration and docs: https://new-feature.ricardodecal.com/
 """
 
 CREATE_DESCRIPTION = """\
