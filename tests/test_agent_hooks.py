@@ -184,13 +184,7 @@ def test_hook_denies_direct_worktree_add_and_remove(
     assert f"git worktree {action}" in hook_output["permissionDecisionReason"]
     assert replacement in hook_output["permissionDecisionReason"]
     assert "Only with human approval" in hook_output["permissionDecisionReason"]
-    assert "I_INSIST=1" in hook_output["permissionDecisionReason"]
-
-
-def test_hook_allows_only_the_insisted_command(tmp_path: Path) -> None:
-    assert _run_bash("I_INSIST=1 git worktree add /tmp/demo", cwd=tmp_path) is None
-    assert _run_bash("I_INSIST=0 git worktree add /tmp/demo", cwd=tmp_path) is not None
-    assert _run_bash("I_INSIST=1 echo ready && git worktree add /tmp/demo", cwd=tmp_path) is not None
+    assert "HUMAN_PERMISSION_GRANTED=1" in hook_output["permissionDecisionReason"]
 
 
 @pytest.mark.parametrize(

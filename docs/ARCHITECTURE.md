@@ -9,7 +9,7 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 - `git.py` and `commands.py`: Git and shell execution.
 - `feature_state.py` and `recovery.py`: inspection and repair.
 - `agent.py`: agent selection, prompts, and launch.
-- `hook_policy.py`, `agent_hook.py`, and `hook_install.py`: policy, provider adapters, and installation.
+- `hook_policy.py`, `rule_checker.py`, and `hook_install.py`: worktree policy, neutral i-insist checker, and provider-rule installation. `agent_hook.py` retains legacy entrypoints for older installations.
 
 Each original checkout owns its manifest. Creation records `initializing` before setup
 and `active` after success. Inspection reports unfinished setup as `setup-incomplete`.

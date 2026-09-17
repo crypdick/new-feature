@@ -163,20 +163,37 @@ issues remain. Repair doesn't recreate missing worktrees.
 Setup and creation add `.new-feature/`, `.worktrees/`, and `*.local.toml` to Git's local
 `info/exclude`. These local ignore rules leave tracked `.gitignore` files unchanged.
 
-## Agent hooks
+## Agent guards
 
-Optional hooks require agents to use managed worktrees and protect the target branch
-from direct edits:
+Install provider-owned [i-insist](https://github.com/crypdick/i-insist) rules:
 
 ```bash
-new-feature install-codex-hook
-new-feature install-claude-hook
+new-feature install-rules           # tracked .i-insist/new-feature.toml
+new-feature install-rules --global  # ~/.i-insist/new-feature.toml
 ```
 
-Installers use `.codex/hooks.json` or `.claude/settings.json`. Restart the agent after
-installation, then inspect `/hooks`. Codex requires trust approval. Keep `new-feature`
-on `PATH`.
+The installer installs i-insist with `uv tool install` if missing, then runs
+`i-insist ensure` to register hooks for available Codex and Claude installations
+and reject explicit disable settings. Existing i-insist installations need
+version 0.2.0 or later (`uv tool upgrade i-insist`). Restart the harness and
+review `/hooks`; Codex trust requires human review. Keep both tools on `PATH`.
 
-Use `--global` for user-level hooks covering managed repositories, or Claude's `--local`
-for `.claude/settings.local.json`. Hooks allow initial commits and edits to the ignored,
-untracked root `.new-feature.local.toml`. Nested files and symlinks get no exception.
+Rules block direct `git worktree add/remove` and direct file edits on the
+configured target branch. Bootstrap is allowed only before any commits exist.
+The ignored, untracked root `.new-feature.local.toml` remains editable; nested
+files and symlinks get no exception. Arbitrary shell programs that edit files
+are outside the target-branch check's scope.
+
+Each rule invokes `new-feature check-rule <id>` with i-insist's neutral event
+JSON. Policy stays in this package; i-insist owns tool normalization, approval,
+and configured messages. A standalone `I insist` human message authorizes the
+response; an explicitly authorized shell call may use
+`HUMAN_PERMISSION_GRANTED=1`.
+
+Repeated installation preserves existing TOML, including custom messages and
+`enabled = false`. Global and local rules accumulate. Retired native hook
+handlers at the selected scope are removed after runner setup succeeds;
+unrelated hooks and settings remain intact. Repeat installation at each scope
+where old hooks were registered. The old `install-codex-hook` and
+`install-claude-hook` commands are compatibility aliases; `--local` is retired.
+For private directory rules, ignore `.i-insist/new-feature.toml` in Git.

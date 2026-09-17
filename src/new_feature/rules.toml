@@ -1,0 +1,14 @@
+[[rules]]
+id = "worktree-add"
+checker = ["new-feature", "check-rule", "worktree-add"]
+message = "Direct git worktree add is disabled. Use new-feature <feature-name> --no-agent, then work in .worktrees/<feature-name>. Only the human can authorize an override with I insist."
+
+[[rules]]
+id = "worktree-remove"
+checker = ["new-feature", "check-rule", "worktree-remove"]
+message = "Direct git worktree remove is disabled. Use new-feature teardown <feature-name>. Only the human can authorize an override with I insist."
+
+[[rules]]
+id = "target-branch"
+checker = ["new-feature", "check-rule", "target-branch"]
+message = "Direct edits on the repository's target branch are disabled. Run new-feature <feature-name> --no-agent, then continue in .worktrees/<feature-name>. Only the human can authorize an override with I insist."
