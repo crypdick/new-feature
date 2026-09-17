@@ -33,5 +33,14 @@ Git commands, lifecycle commands, and agents ignore inherited Git repository-loc
 overrides. Their working directory selects the repository. Transport, authentication,
 and explicitly configured lifecycle environment values remain available.
 
+## Agent guards
+
+- Worktrees: route creation and removal through `new-feature`.
+- Target edits: require a feature branch, except before the first commit or for the ignored, untracked root `.new-feature.local.toml`.
+- Target merges: require `new-feature merge`; feature-branch merges, `--continue`, `--abort`, `--quit`, help, and `git commit` remain allowed.
+- Scope: recognize Git directory options and simple `cd` commands, not arbitrary scripts, Git aliases, or shell file writes.
+- Installation: i-insist runs the rules; reinstall appends missing defaults and preserves custom messages and disabled rules.
+- Overrides: require a standalone human `I insist` message; i-insist owns approval.
+
 The generated module reference describes internals, not a stable external Python API.
 See [Contributing](CONTRIBUTING.md) for development and [Quality](QUALITY.md) for checks.

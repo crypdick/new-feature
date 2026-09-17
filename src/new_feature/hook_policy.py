@@ -17,7 +17,7 @@ BranchName = NewType("BranchName", str)
 WorktreeAction = NewType("WorktreeAction", str)
 
 _WORKTREE_ACTIONS = {"add", "remove"}
-_SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
+_SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", ""}
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*\Z")
 _COMMAND_WRAPPERS = {"command", "exec"}
 _ENV_OPTIONS_WITH_VALUES = {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"}
@@ -103,13 +103,7 @@ def evaluate_worktree_policy(request: HookRequest, *, cwd: Path) -> PolicyDenial
 
 def parse_worktree_action(command: str) -> WorktreeAction | None:
     """Return the direct managed-worktree action invoked by a shell command."""
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
-        lexer.whitespace_split = True
-        tokens = list(lexer)
-    except ValueError:
-        return None
-    for shell_command in _shell_commands(tokens):
+    for shell_command in _parse_shell_commands(command):
         git_arguments = _git_arguments(shell_command)
         if git_arguments is None:
             continue
@@ -119,11 +113,49 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
     return None
 
 
+def evaluate_merge_policy(command: str, *, cwd: Path) -> PolicyDenial | None:
+    """Reject starting a direct merge on the configured target branch."""
+    for shell_command in _parse_shell_commands(command):
+        if shell_command[0] == "cd" and len(shell_command) in {2, 3}:
+            cwd = cwd / Path(shell_command[-1]).expanduser()
+            continue
+        arguments = _git_arguments(shell_command)
+        if arguments is None:
+            continue
+        index = _skip_options(arguments, 0, options_with_values=_GIT_OPTIONS_WITH_VALUES)
+        if arguments[index : index + 1] != ["merge"]:
+            continue
+        # NOTE: docs/ARCHITECTURE.md's Agent guards permit recovery on the target branch.
+        if arguments[index + 1 :] in (["--continue"], ["--abort"], ["--quit"], ["--help"], ["-h"]):
+            continue
+        try:
+            context = _git_context_for(cwd, cwd=cwd, git_options=tuple(arguments[:index]))
+        except (NewFeatureError, OSError):
+            continue
+        if context is not None and context.branch == context.target_branch:
+            return PolicyDenial(
+                f"Direct git merge on target branch '{context.target_branch}' is disabled. "
+                "Use `new-feature merge <feature-name>`. To finish or cancel an existing merge, "
+                "use `git merge --continue`, `git merge --abort`, or `git merge --quit`."
+            )
+    return None
+
+
+def _parse_shell_commands(command: str) -> list[list[str]]:
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        return _shell_commands(list(lexer))
+    except ValueError:
+        return []
+
+
 def _shell_commands(tokens: list[str]) -> list[list[str]]:
     commands: list[list[str]] = []
     start = 0
     for index, token in enumerate(tokens):
-        if token not in _SHELL_SEPARATORS:
+        if not token or token.strip("\n") not in _SHELL_SEPARATORS:
             continue
         if start < index:
             commands.append(tokens[start:index])
@@ -199,20 +231,20 @@ def _worktree_subcommand(tokens: list[str], index: int) -> WorktreeAction | None
     return None
 
 
-def _git_context_for(path: Path, *, cwd: Path) -> GitContext | None:
+def _git_context_for(path: Path, *, cwd: Path, git_options: tuple[str, ...] = ()) -> GitContext | None:
     probe = _existing_probe_path(path, cwd=cwd)
-    root = _git_output(probe, "rev-parse", "--show-toplevel")
+    root = _git_output(probe, *git_options, "rev-parse", "--show-toplevel")
     if root is None:
         return None
     root_path = Path(root).resolve()
-    # NOTE: README.md permits bootstrap only while the repository has no commits.
-    history = _git_output(root_path, "rev-list", "--all", "--max-count=1")
+    # NOTE: docs/ARCHITECTURE.md permits bootstrap only before the first commit.
+    history = _git_output(probe, *git_options, "rev-list", "--all", "--max-count=1")
     if history is not None and not history:
         return None
-    branch = _git_output(root_path, "branch", "--show-current")
+    branch = _git_output(probe, *git_options, "branch", "--show-current")
     if not branch:
         return None
-    # NOTE: README.md documents that hooks protect the configured target branch.
+    # NOTE: docs/ARCHITECTURE.md documents protection of the configured target branch.
     target_branch = load_project_config(root_path).target_branch
     return GitContext(
         root=root_path,
@@ -222,7 +254,7 @@ def _git_context_for(path: Path, *, cwd: Path) -> GitContext | None:
 
 
 def _is_ignored_root_sidecar(path: Path, *, cwd: Path, root: Path) -> bool:
-    # NOTE: README.md permits only the ignored, untracked root configuration file.
+    # NOTE: docs/ARCHITECTURE.md permits only the ignored, untracked root configuration file.
     target = path.expanduser()
     if not target.is_absolute():
         target = cwd / target

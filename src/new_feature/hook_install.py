@@ -11,8 +11,11 @@ import json
 import shlex
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import cast
+
+import tomli_w
 
 from new_feature.atomic_file import atomic_text_write
 from new_feature.errors import NewFeatureError
@@ -34,9 +37,11 @@ def install_rules(base: Path) -> Path:
     """Install provider-owned rules, preserving existing user configuration."""
     ensure_runner()
     path = base / ".i-insist" / "new-feature.toml"
+    source = Path(__file__).with_name("rules.toml").read_text(encoding="utf-8")
     if not path.exists():
-        source = Path(__file__).with_name("rules.toml").read_text(encoding="utf-8")
         atomic_text_write(path, source, default_mode=0o600)
+    else:
+        _append_missing_rules(path, source)
     for hooks_path, markers in (
         (base / ".codex" / "hooks.json", _CODEX_MARKERS),
         (base / ".claude" / "settings.json", _CLAUDE_MARKERS),
@@ -44,6 +49,18 @@ def install_rules(base: Path) -> Path:
     ):
         _remove_guard(hooks_path, markers=markers)
     return path
+
+
+def _append_missing_rules(path: Path, source: str) -> None:
+    # NOTE: docs/ARCHITECTURE.md promises to preserve custom rules and append missing defaults.
+    try:
+        original = path.read_text(encoding="utf-8")
+        existing = {rule["id"] for rule in tomllib.loads(original).get("rules", [])}
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise NewFeatureError(f"cannot read rules file {path}: {exc}") from exc
+    missing = [rule for rule in tomllib.loads(source)["rules"] if rule["id"] not in existing]
+    if missing:
+        atomic_text_write(path, original + "\n" + tomli_w.dumps({"rules": missing}), default_mode=0o600)
 
 
 def install_codex_hook(base: Path) -> Path:

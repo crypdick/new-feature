@@ -64,7 +64,7 @@ def test_install_rules_writes_provider_config_and_preserves_edits(tmp_path, monk
     assert cli.main(["install-rules"]) == 0
     path = tmp_path / ".i-insist/new-feature.toml"
     rules = tomllib.loads(path.read_text())["rules"]
-    assert {r["id"] for r in rules} == {"worktree-add", "worktree-remove", "target-branch"}
+    assert {r["id"] for r in rules} == {"worktree-add", "worktree-remove", "target-branch", "target-merge"}
     assert all(r["checker"][:2] == ["new-feature", "check-rule"] for r in rules)
     path.write_text(path.read_text().replace('id = "target-branch"', 'id = "target-branch"\nenabled = false'))
     original = path.read_bytes()

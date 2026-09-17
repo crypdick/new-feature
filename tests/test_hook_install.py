@@ -1,12 +1,45 @@
 from __future__ import annotations
 
 import json
+import tomllib
 
 import pytest
 
 from new_feature import cli
 from new_feature.errors import NewFeatureError
 from new_feature.hook_install import install_claude_hook, install_codex_hook, install_rules
+
+
+def test_upgrade_appends_missing_rules_without_changing_customizations(tmp_path):
+    path = tmp_path / ".i-insist/new-feature.toml"
+    path.parent.mkdir()
+    original = '# Keep this comment\n[[rules]]\nid = "target-branch"\nenabled = false\nmessage = "Custom"\n'
+    path.write_text(original)
+    path.chmod(0o640)
+    install_rules(tmp_path)
+    assert path.read_text().startswith(original)
+    rules = tomllib.loads(path.read_text())["rules"]
+    assert {rule["id"] for rule in rules} == {
+        "target-branch",
+        "target-merge",
+        "worktree-add",
+        "worktree-remove",
+    }
+    assert rules[0] == {"id": "target-branch", "enabled": False, "message": "Custom"}
+    assert path.stat().st_mode & 0o777 == 0o640
+    upgraded = path.read_bytes()
+    install_rules(tmp_path)
+    assert path.read_bytes() == upgraded
+
+
+@pytest.mark.parametrize("original", ["invalid toml", "rules = 3", '[[rules]]\nmessage = "no id"'])
+def test_upgrade_preserves_invalid_rules_and_reports_error(tmp_path, original):
+    path = tmp_path / ".i-insist/new-feature.toml"
+    path.parent.mkdir()
+    path.write_text(original)
+    with pytest.raises(NewFeatureError, match="cannot read rules file"):
+        install_rules(tmp_path)
+    assert path.read_text() == original
 
 
 @pytest.mark.parametrize("installer", [install_rules, install_codex_hook, install_claude_hook])

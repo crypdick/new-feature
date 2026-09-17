@@ -6,12 +6,17 @@ import json
 import sys
 from pathlib import Path
 
-from new_feature.hook_policy import EditRequest, evaluate_worktree_policy, parse_worktree_action
+from new_feature.hook_policy import (
+    EditRequest,
+    evaluate_merge_policy,
+    evaluate_worktree_policy,
+    parse_worktree_action,
+)
 
 
 def should_block(name: str, event: object) -> bool:
     """Check one provider rule without interpreting harness names or approvals."""
-    if name not in {"worktree-add", "worktree-remove", "target-branch"}:
+    if name not in {"worktree-add", "worktree-remove", "target-branch", "target-merge"}:
         raise ValueError(f"unknown rule: {name}")
     if not isinstance(event, dict):
         raise TypeError("event must be an object")
@@ -22,6 +27,8 @@ def should_block(name: str, event: object) -> bool:
         command = event.get("command")
         if not isinstance(command, str):
             raise ValueError("shell event needs command")
+        if name == "target-merge":
+            return evaluate_merge_policy(command, cwd=Path(cwd)) is not None
         return name == f"worktree-{parse_worktree_action(command)}"
     if kind in {"file_write", "file_edit"}:
         paths = event.get("paths")
