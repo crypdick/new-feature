@@ -42,7 +42,7 @@ or installing optional hooks.
 """
 
 INSTALL_CODEX_HOOK_DESCRIPTION = """\
-Install the target-branch and managed-worktree guard in .codex/hooks.json.
+Compatibility alias for install-rules: install .i-insist/new-feature.toml.
 Block direct edits on the target branch and require worktree creation and removal
 through new-feature.
 Other hooks stay unchanged. Keep new-feature on PATH.
@@ -50,7 +50,7 @@ Restart Codex, then review and trust the guard with /hooks.
 """
 
 INSTALL_CLAUDE_HOOK_DESCRIPTION = """\
-Install the target-branch and managed-worktree guard in .claude/settings.json.
+Compatibility alias for install-rules: install .i-insist/new-feature.toml.
 Block direct edits on the target branch and require worktree creation and removal
 through new-feature.
 Other settings and hooks stay unchanged. Keep new-feature on PATH.

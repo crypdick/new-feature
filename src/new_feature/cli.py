@@ -38,7 +38,7 @@ from new_feature.git import (
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
-from new_feature.hook_install import install_claude_hook, install_codex_hook
+from new_feature.hook_install import install_claude_hook, install_rules
 from new_feature.lifecycle import merge_failure_log, now
 from new_feature.manifest import (
     FeatureRecord,
@@ -50,11 +50,12 @@ from new_feature.manifest import (
     target_merge_lock,
 )
 from new_feature.recovery import repair_feature
+from new_feature.rule_checker import main as check_rule
 from new_feature.slug import feature_key, slugify
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
 
 _INTERNAL_HOOK_COMMANDS = frozenset({"codex-hook", "claude-hook"})
-_INSTALL_HOOK_COMMANDS = frozenset({"install-codex-hook", "install-claude-hook"})
+_INSTALL_HOOK_COMMANDS = frozenset({"install-codex-hook", "install-claude-hook", "install-rules"})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if len(raw_argv) == 1 and raw_argv[0] in _INTERNAL_HOOK_COMMANDS:
         return run_agent_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
+    if len(raw_argv) == 2 and raw_argv[0] == "check-rule":
+        return check_rule(raw_argv[1])
     args = parse_args(raw_argv)
     try:
         return _run(args)
@@ -78,16 +81,14 @@ def _run(args: argparse.Namespace) -> int:
 
 def _install_hook(args: argparse.Namespace) -> int:
     base = Path.home() if args.global_scope else repo_root(Path.cwd())
-    if args.command == "install-codex-hook":
-        path = install_codex_hook(base)
-        print(f"Installed Codex target-branch guard in {path}")
-        print("Restart Codex, then review and trust the hook with /hooks.")
-    else:
+    if args.command == "install-claude-hook":
         path = install_claude_hook(base, local=args.local_scope)
-        print(f"Installed Claude Code target-branch guard in {path}")
-        print("Restart Claude Code so the session reloads its hooks, then review them with /hooks.")
-    if args.global_scope:
-        print("The guard now applies to every repository on this machine.")
+    else:
+        path = install_rules(base)
+    print(f"Installed i-insist rules in {path}")
+    print(
+        "Install i-insist and run `i-insist install codex` or `i-insist install claude`, then restart the harness."
+    )
     return 0
 
 

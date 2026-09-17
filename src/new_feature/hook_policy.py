@@ -110,8 +110,6 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
     except ValueError:
         return None
     for shell_command in _shell_commands(tokens):
-        if _has_i_insist(shell_command):
-            continue
         git_arguments = _git_arguments(shell_command)
         if git_arguments is None:
             continue
@@ -119,16 +117,6 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
         if action is not None:
             return action
     return None
-
-
-def _has_i_insist(command: list[str]) -> bool:
-    """Return whether a command has an explicit human override assignment."""
-    for word in command:
-        if not _ASSIGNMENT.fullmatch(word):
-            return False
-        if word == "I_INSIST=1":
-            return True
-    return False
 
 
 def _shell_commands(tokens: list[str]) -> list[list[str]]:
@@ -285,5 +273,5 @@ def _worktree_denial_reason(action: WorktreeAction) -> str:
     )
     return (
         f"BLOCKED [new-feature-worktree-{action}]: Direct `git worktree {action}` is disabled. "
-        f"Use {replacement} instead. Only with human approval, prefix this command with `I_INSIST=1`."
+        f"Use {replacement} instead. Only with human approval, prefix this command with `HUMAN_PERMISSION_GRANTED=1`."
     )

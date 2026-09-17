@@ -26,6 +26,7 @@ _COMMANDS = frozenset({
     "list",
     "status",
     "doctor",
+    "install-rules",
     "install-codex-hook",
     "install-claude-hook",
 })
@@ -150,6 +151,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor.set_defaults(command="doctor")
 
+    rules = subparsers.add_parser("install-rules", help="install harness-neutral i-insist rules")
+    rules.add_argument(
+        "--global",
+        dest="global_scope",
+        action="store_true",
+        help="install in ~/.i-insist for every repository",
+    )
+    rules.set_defaults(command="install-rules")
+
     install_codex = subparsers.add_parser(
         "install-codex-hook",
         help="install the Codex worktree guard",
@@ -161,7 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--global",
         dest="global_scope",
         action="store_true",
-        help="install in ~/.codex/hooks.json for all managed repositories",
+        help="install in ~/.i-insist for all repositories",
     )
     install_codex.set_defaults(command="install-codex-hook", local_scope=False)
 
@@ -182,13 +192,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--global",
         dest="global_scope",
         action="store_true",
-        help="install in ~/.claude/settings.json for all managed repositories",
+        help="install in ~/.i-insist for all repositories",
     )
     claude_scope.add_argument(
         "--local",
         dest="local_scope",
         action="store_true",
-        help="install in ignored .claude/settings.local.json",
+        help="retired; use install-rules and ignore its TOML if needed",
     )
     install_claude.set_defaults(command="install-claude-hook")
 
