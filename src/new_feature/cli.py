@@ -36,7 +36,7 @@ from new_feature.git import (
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
-from new_feature.hook_install import install_claude_hook, install_rules
+from new_feature.hook_install import install_rules
 from new_feature.lifecycle import merge_failure_log, now
 from new_feature.manifest import (
     FeatureRecord,
@@ -51,8 +51,6 @@ from new_feature.recovery import repair_feature
 from new_feature.rule_checker import main as check_rule
 from new_feature.slug import feature_key, slugify
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
-
-_INSTALL_HOOK_COMMANDS = frozenset({"install-codex-hook", "install-claude-hook", "install-rules"})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,17 +67,14 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
-    if args.command in _INSTALL_HOOK_COMMANDS:
-        return _install_hook(args)
+    if args.command == "install-rules":
+        return _install_rules(args)
     return _dispatch(args, repo_root(Path.cwd()))
 
 
-def _install_hook(args: argparse.Namespace) -> int:
+def _install_rules(args: argparse.Namespace) -> int:
     base = Path.home() if args.global_scope else repo_root(Path.cwd())
-    if args.command == "install-claude-hook":
-        path = install_claude_hook(base, local=args.local_scope)
-    else:
-        path = install_rules(base)
+    path = install_rules(base)
     print(f"Installed i-insist rules in {path}")
     print("i-insist hooks are enabled. Restart the harness to load changes.")
     return 0

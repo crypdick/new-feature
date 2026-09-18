@@ -9,8 +9,6 @@ from new_feature.help_text import (
     CREATE_DESCRIPTION,
     CREATE_EPILOG,
     DOCTOR_DESCRIPTION,
-    INSTALL_CLAUDE_HOOK_DESCRIPTION,
-    INSTALL_CODEX_HOOK_DESCRIPTION,
     LIST_DESCRIPTION,
     MERGE_DESCRIPTION,
     SETUP_DESCRIPTION,
@@ -26,7 +24,7 @@ _COMMANDS = frozenset({
     "list",
     "status",
     "doctor",
-    # NOTE: docs/ARCHITECTURE.md retires native guards; stale hooks must not create features.
+    # NOTE: docs/ARCHITECTURE.md retires native guards and installers; reject these names.
     "codex-hook",
     "claude-hook",
     "install-rules",
@@ -162,48 +160,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="install in ~/.i-insist for every repository",
     )
     rules.set_defaults(command="install-rules")
-
-    install_codex = subparsers.add_parser(
-        "install-codex-hook",
-        help="install the Codex worktree guard",
-        description=INSTALL_CODEX_HOOK_DESCRIPTION,
-        epilog=("Examples:\n  new-feature install-codex-hook\n  new-feature install-codex-hook --global"),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    install_codex.add_argument(
-        "--global",
-        dest="global_scope",
-        action="store_true",
-        help="install in ~/.i-insist for all repositories",
-    )
-    install_codex.set_defaults(command="install-codex-hook", local_scope=False)
-
-    install_claude = subparsers.add_parser(
-        "install-claude-hook",
-        help="install the Claude Code worktree guard",
-        description=INSTALL_CLAUDE_HOOK_DESCRIPTION,
-        epilog=(
-            "Examples:\n"
-            "  new-feature install-claude-hook\n"
-            "  new-feature install-claude-hook --local\n"
-            "  new-feature install-claude-hook --global"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    claude_scope = install_claude.add_mutually_exclusive_group()
-    claude_scope.add_argument(
-        "--global",
-        dest="global_scope",
-        action="store_true",
-        help="install in ~/.i-insist for all repositories",
-    )
-    claude_scope.add_argument(
-        "--local",
-        dest="local_scope",
-        action="store_true",
-        help="retired; use install-rules and ignore its TOML if needed",
-    )
-    install_claude.set_defaults(command="install-claude-hook")
 
     return parser
 

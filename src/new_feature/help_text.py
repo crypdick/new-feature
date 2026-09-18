@@ -41,22 +41,6 @@ Setup adds local ignore rules. The agent asks for approval before further edits
 or installing optional hooks.
 """
 
-INSTALL_CODEX_HOOK_DESCRIPTION = """\
-Compatibility alias for install-rules: install .i-insist/new-feature.toml.
-Block direct edits on the target branch and require worktree creation and removal
-through new-feature.
-Other hooks stay unchanged. Keep new-feature on PATH.
-Restart Codex, then review and trust the guard with /hooks.
-"""
-
-INSTALL_CLAUDE_HOOK_DESCRIPTION = """\
-Compatibility alias for install-rules: install .i-insist/new-feature.toml.
-Block direct edits on the target branch and require worktree creation and removal
-through new-feature.
-Other settings and hooks stay unchanged. Keep new-feature on PATH.
-Restart Claude Code, then review the guard with /hooks.
-"""
-
 MERGE_DESCRIPTION = """\
 Check and merge a feature into its target branch. Requires clean feature and target checkouts.
 Failed checks stop the merge. The command pushes only when push = true.
