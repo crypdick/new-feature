@@ -5,10 +5,8 @@ from __future__ import annotations
 import argparse  # noqa: TC003 - package-wide beartype needs annotation types at runtime
 import sys
 from pathlib import Path
-from typing import cast
 
 from new_feature import agent as agent_module
-from new_feature.agent_hook import TextStream, run_agent_hook
 from new_feature.allocator import allocate_env
 from new_feature.cli_parser import parse_args
 from new_feature.commands import run_commands
@@ -54,15 +52,12 @@ from new_feature.rule_checker import main as check_rule
 from new_feature.slug import feature_key, slugify
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
 
-_INTERNAL_HOOK_COMMANDS = frozenset({"codex-hook", "claude-hook"})
 _INSTALL_HOOK_COMMANDS = frozenset({"install-codex-hook", "install-claude-hook", "install-rules"})
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run the command-line interface and return its process exit status."""
     raw_argv = sys.argv[1:] if argv is None else argv
-    if len(raw_argv) == 1 and raw_argv[0] in _INTERNAL_HOOK_COMMANDS:
-        return run_agent_hook(cast("TextStream", sys.stdin), cast("TextStream", sys.stdout), cwd=Path.cwd())
     if len(raw_argv) == 2 and raw_argv[0] == "check-rule":
         return check_rule(raw_argv[1])
     args = parse_args(raw_argv)
@@ -86,9 +81,7 @@ def _install_hook(args: argparse.Namespace) -> int:
     else:
         path = install_rules(base)
     print(f"Installed i-insist rules in {path}")
-    print(
-        "Install i-insist and run `i-insist install codex` or `i-insist install claude`, then restart the harness."
-    )
+    print("i-insist hooks are enabled. Restart the harness to load changes.")
     return 0
 
 

@@ -9,7 +9,7 @@ from new_feature.agent import launch_interactive_agent
 from new_feature.commands import run_commands
 from new_feature.errors import NewFeatureError
 from new_feature.git import ensure_repo_has_commits, local_exclude_path
-from new_feature.hook_policy import EditRequest, evaluate_worktree_policy
+from new_feature.rule_checker import should_block
 from tests.conftest import init_git_repo
 
 if TYPE_CHECKING:
@@ -41,9 +41,14 @@ def test_operations_use_the_requested_repository(
             with pytest.raises(NewFeatureError, match="repository has no commits"):
                 ensure_repo_has_commits(target)
         elif operation == "policy":
-            denial = evaluate_worktree_policy(EditRequest((target / "README.md",)), cwd=target)
-            assert denial is not None
-            assert "target branch 'main'" in denial.reason
+            assert should_block(
+                "target-branch",
+                {
+                    "kind": "file_edit",
+                    "cwd": str(target),
+                    "paths": [str(target / "README.md")],
+                },
+            )
         elif operation == "command":
             run_commands(["git config isolation.target yes"], cwd=target, env={})
         else:

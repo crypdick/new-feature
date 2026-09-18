@@ -7,9 +7,8 @@ import sys
 from pathlib import Path
 
 from new_feature.hook_policy import (
-    EditRequest,
-    evaluate_merge_policy,
-    evaluate_worktree_policy,
+    blocks_target_edit,
+    blocks_target_merge,
     parse_worktree_action,
 )
 
@@ -28,15 +27,14 @@ def should_block(name: str, event: object) -> bool:
         if not isinstance(command, str):
             raise ValueError("shell event needs command")
         if name == "target-merge":
-            return evaluate_merge_policy(command, cwd=Path(cwd)) is not None
+            return blocks_target_merge(command, cwd=Path(cwd))
         return name == f"worktree-{parse_worktree_action(command)}"
     if kind in {"file_write", "file_edit"}:
         paths = event.get("paths")
         if not isinstance(paths, list) or any(not isinstance(path, str) or not path for path in paths):
             raise ValueError("file event needs paths")
         if name == "target-branch":
-            request = EditRequest(tuple(Path(path) for path in paths))
-            return evaluate_worktree_policy(request, cwd=Path(cwd)) is not None
+            return blocks_target_edit(tuple(Path(path) for path in paths), cwd=Path(cwd))
     return False
 
 

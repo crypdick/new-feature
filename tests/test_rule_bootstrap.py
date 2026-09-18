@@ -25,7 +25,7 @@ printf '#!/bin/sh\\nprintf "ensure\\\\n" >> "$CALL_LOG"\\n' > "$RUNNER_BIN"
     )
     ensure_runner()
     assert log.read_text().splitlines() == [
-        "tool install git+https://github.com/crypdick/i-insist@main",
+        "tool install i-insist",
         "ensure",
     ]
 
