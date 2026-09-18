@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 
+from new_feature.errors import NewFeatureError
 from new_feature.rule_checker import should_block
 from tests.conftest import init_git_repo
 
@@ -86,17 +87,19 @@ def test_allows_non_repository_and_non_shell_event(tmp_path):
     assert not should_block("target-merge", {"kind": "other", "cwd": str(tmp_path)})
 
 
-def test_bad_project_config_does_not_crash_guard(tmp_path):
+def test_bad_project_config_reports_failure(tmp_path):
     init_git_repo(tmp_path)
     (tmp_path / ".new-feature.toml").write_text("invalid toml")
-    assert not blocked(tmp_path, "git merge feature")
+    with pytest.raises(NewFeatureError, match="invalid"):
+        blocked(tmp_path, "git merge feature")
 
 
-def test_git_probe_failure_does_not_crash_guard(tmp_path, monkeypatch):
+def test_git_probe_failure_propagates(tmp_path, monkeypatch):
     from new_feature import hook_policy
 
     def unavailable(*args, **kwargs):
         raise OSError("git unavailable")
 
     monkeypatch.setattr(hook_policy.subprocess, "run", unavailable)
-    assert not blocked(tmp_path, "git merge feature")
+    with pytest.raises(OSError, match="git unavailable"):
+        blocked(tmp_path, "git merge feature")

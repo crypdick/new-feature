@@ -27,17 +27,35 @@ def test_neutral_checker_ignores_harness_and_tool_name(tmp_path, monkeypatch, ha
         "harness": harness,
         "tool_name": "arbitrary",
     }
-    assert check(monkeypatch, event) == (0, "true\n")
-    assert check(monkeypatch, event, "worktree-remove") == (0, "false\n")
+    status, output = check(monkeypatch, event)
+    assert status == 0
+    assert (
+        json.loads(output)
+        == "Direct git worktree add is disabled. Use new-feature <feature-name> --no-agent, then work in .worktrees/<feature-name>. Only the human can authorize an override with I insist."
+    )
+    assert check(monkeypatch, event, "worktree-remove") == (0, "null\n")
 
 
 def test_neutral_file_checker_uses_event_cwd_and_all_paths(tmp_path, monkeypatch):
     init_git_repo(tmp_path)
     event = {"kind": "file_edit", "cwd": str(tmp_path), "paths": ["README.md"], "command": None}
-    assert check(monkeypatch, event, "target-branch") == (0, "true\n")
-    assert check(monkeypatch, event, "worktree-add") == (0, "false\n")
+    status, output = check(monkeypatch, event, "target-branch")
+    assert status == 0
+    assert "Direct edits on the repository's target branch" in json.loads(output)
+    assert check(monkeypatch, event, "worktree-add") == (0, "null\n")
     event["kind"] = "other"
-    assert check(monkeypatch, event, "target-branch") == (0, "false\n")
+    assert check(monkeypatch, event, "target-branch") == (0, "null\n")
+
+
+@pytest.mark.parametrize("name", ["target-branch", "target-merge"])
+def test_invalid_policy_reports_checker_failure(tmp_path, monkeypatch, capsys, name):
+    init_git_repo(tmp_path)
+    (tmp_path / ".new-feature.toml").write_text("target_branch = [broken\n")
+    event = {"kind": "file_edit", "cwd": str(tmp_path), "paths": [str(tmp_path / "README.md")]}
+    if name == "target-merge":
+        event.update(kind="shell", command="git merge feature")
+    assert check(monkeypatch, event, name) == (2, "")
+    assert "new-feature checker:" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -56,7 +74,7 @@ def test_malformed_neutral_event_fails(monkeypatch, payload):
     assert not output
 
 
-def test_install_rules_writes_provider_config_and_preserves_edits(tmp_path, monkeypatch):
+def test_install_rules_restores_provider_config(tmp_path, monkeypatch):
     import tomllib
 
     init_git_repo(tmp_path)
@@ -66,8 +84,8 @@ def test_install_rules_writes_provider_config_and_preserves_edits(tmp_path, monk
     rules = tomllib.loads(path.read_text())["rules"]
     assert {r["id"] for r in rules} == {"worktree-add", "worktree-remove", "target-branch", "target-merge"}
     assert all(r["checker"][:2] == ["new-feature", "check-rule"] for r in rules)
-    path.write_text(path.read_text().replace('id = "target-branch"', 'id = "target-branch"\nenabled = false'))
     original = path.read_bytes()
+    path.write_text(path.read_text().replace('id = "target-branch"', 'id = "target-branch"\nenabled = false'))
     assert cli.main(["install-rules"]) == 0
     assert path.read_bytes() == original
 

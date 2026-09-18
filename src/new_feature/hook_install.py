@@ -8,14 +8,12 @@ user-level installs (base is the home directory).
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
 from typing import cast
-
-import tomli_w
 
 from new_feature.atomic_file import atomic_text_write
 from new_feature.errors import NewFeatureError
@@ -34,14 +32,12 @@ _CLAUDE_MARKERS = (
 
 
 def install_rules(base: Path) -> Path:
-    """Install provider-owned rules, preserving existing user configuration."""
+    """Write the current provider-owned registration."""
     ensure_runner()
     path = base / ".i-insist" / "new-feature.toml"
     source = Path(__file__).with_name("rules.toml").read_text(encoding="utf-8")
-    if not path.exists():
-        atomic_text_write(path, source, default_mode=0o600)
-    else:
-        _append_missing_rules(path, source)
+    # NOTE: docs/ARCHITECTURE.md describes replacement of provider-owned registrations.
+    atomic_text_write(path.resolve(), source, default_mode=0o600)
     for hooks_path, markers in (
         (base / ".codex" / "hooks.json", _CODEX_MARKERS),
         (base / ".claude" / "settings.json", _CLAUDE_MARKERS),
@@ -49,18 +45,6 @@ def install_rules(base: Path) -> Path:
     ):
         _remove_guard(hooks_path, markers=markers)
     return path
-
-
-def _append_missing_rules(path: Path, source: str) -> None:
-    # NOTE: docs/ARCHITECTURE.md promises to preserve custom rules and append missing defaults.
-    try:
-        original = path.read_text(encoding="utf-8")
-        existing = {rule["id"] for rule in tomllib.loads(original).get("rules", [])}
-    except (OSError, ValueError, TypeError, KeyError) as exc:
-        raise NewFeatureError(f"cannot read rules file {path}: {exc}") from exc
-    missing = [rule for rule in tomllib.loads(source)["rules"] if rule["id"] not in existing]
-    if missing:
-        atomic_text_write(path, original + "\n" + tomli_w.dumps({"rules": missing}), default_mode=0o600)
 
 
 def install_codex_hook(base: Path) -> Path:
@@ -151,11 +135,21 @@ def _atomic_json_write(path: Path, document: JsonObject) -> None:
 
 
 def ensure_runner() -> None:
-    """Install the standalone runner if absent, then verify its registration."""
+    """Ensure the runner supports the checker protocol, then verify registration."""
     # NOTE: docs/ARCHITECTURE.md documents PyPI bootstrap and hook enablement.
     try:
-        if shutil.which("i-insist") is None:
-            subprocess.run(["uv", "tool", "install", "i-insist"], check=True)
+        result = (
+            subprocess.run(["i-insist", "--version"], capture_output=True, text=True, check=False)
+            if shutil.which("i-insist")
+            else None
+        )
+        current = (
+            re.fullmatch(r"i-insist (\d+)\.(\d+)\.(\d+)", result.stdout.strip())
+            if result is not None and result.returncode == 0
+            else None
+        )
+        if current is None or tuple(map(int, current.groups())) < (0, 4, 0):
+            subprocess.run(["uv", "tool", "install", "--upgrade", "i-insist>=0.4.0"], check=True)
         subprocess.run(["i-insist", "ensure"], check=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise NewFeatureError(
