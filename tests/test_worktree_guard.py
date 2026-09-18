@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from new_feature import hook_policy
+from new_feature.errors import NewFeatureError
 from new_feature.rule_checker import should_block
 from tests.conftest import init_git_repo
 
@@ -41,18 +42,20 @@ def test_uses_configured_target_branch_and_new_file_parent(tmp_path: Path) -> No
     assert blocked(Path("nested/new.py"), cwd=tmp_path)
 
 
-def test_allows_non_repository_and_invalid_project_config(tmp_path: Path) -> None:
+def test_allows_non_repository_but_rejects_invalid_project_config(tmp_path: Path) -> None:
     assert not blocked(tmp_path / "missing.py", cwd=tmp_path)
     init_git_repo(tmp_path, "not valid toml")
-    assert not blocked(tmp_path / "pyproject.toml", cwd=tmp_path)
+    with pytest.raises(NewFeatureError, match=r"invalid pyproject\.toml"):
+        blocked(tmp_path / "pyproject.toml", cwd=tmp_path)
 
 
-def test_git_probe_failure_does_not_crash_edit_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_git_probe_failure_propagates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def unavailable(*args, **kwargs):
         raise OSError("git unavailable")
 
     monkeypatch.setattr(hook_policy.subprocess, "run", unavailable)
-    assert not blocked(tmp_path / "file.py", cwd=tmp_path)
+    with pytest.raises(OSError, match="git unavailable"):
+        blocked(tmp_path / "file.py", cwd=tmp_path)
 
 
 @pytest.mark.parametrize(

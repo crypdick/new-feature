@@ -6,16 +6,24 @@ import json
 import sys
 from pathlib import Path
 
+from new_feature.errors import NewFeatureError
 from new_feature.hook_policy import (
     blocks_target_edit,
     blocks_target_merge,
     parse_worktree_action,
 )
 
+MESSAGES = {
+    "worktree-add": "Direct git worktree add is disabled. Use new-feature <feature-name> --no-agent, then work in .worktrees/<feature-name>. Only the human can authorize an override with I insist.",
+    "worktree-remove": "Direct git worktree remove is disabled. Use new-feature teardown <feature-name>. Only the human can authorize an override with I insist.",
+    "target-branch": "Direct edits on the repository's target branch are disabled. Run new-feature <feature-name> --no-agent, then continue in .worktrees/<feature-name>. Only the human can authorize an override with I insist.",
+    "target-merge": "Direct git merge on the target branch is disabled. Use new-feature merge <feature-name>. Recovery remains allowed: git merge --continue, --abort, or --quit. Only the human can authorize an override with I insist.",
+}
+
 
 def should_block(name: str, event: object) -> bool:
     """Check one provider rule without interpreting harness names or approvals."""
-    if name not in {"worktree-add", "worktree-remove", "target-branch", "target-merge"}:
+    if name not in MESSAGES:
         raise ValueError(f"unknown rule: {name}")
     if not isinstance(event, dict):
         raise TypeError("event must be an object")
@@ -39,11 +47,11 @@ def should_block(name: str, event: object) -> bool:
 
 
 def main(name: str) -> int:
-    """Read one neutral event and print exactly one JSON boolean."""
+    """Read one neutral event and print a JSON denial message or null."""
     try:
         result = should_block(name, json.load(sys.stdin))
-    except (ValueError, TypeError, OSError) as exc:
+    except (NewFeatureError, ValueError, TypeError, OSError) as exc:
         sys.stderr.write(f"new-feature checker: {exc}\n")
         return 2
-    sys.stdout.write(json.dumps(result) + "\n")
+    sys.stdout.write(json.dumps(MESSAGES[name] if result else None) + "\n")
     return 0

@@ -173,4 +173,13 @@ new-feature install-rules           # tracked .i-insist/new-feature.toml
 new-feature install-rules --global  # ~/.i-insist/new-feature.toml
 ```
 
+Setup requires i-insist 0.4.0 or later and upgrades older runners. It atomically
+replaces new-feature's generated rule registration; installed rule files are not
+user customization files. Checkers own denial messages and return JSON `null` to
+allow or a nonempty string to block. Evaluation errors fail closed with stderr
+reported by i-insist. Human `I insist` approval remains available.
+
+This changes the checker protocol. Coordinate runner and provider upgrades, then
+rerun `install-rules` to replace old registrations, including tracked repository
+registrations. Old rule fields and boolean checker output fail closed.
 Restart your copilot and review `/hooks` after installation.

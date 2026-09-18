@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import NewType
 
 from new_feature.config import load_project_config
-from new_feature.errors import NewFeatureError
 from new_feature.git import git_environment
 
 BranchName = NewType("BranchName", str)
@@ -64,10 +63,7 @@ class GitContext:
 def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
     """Check whether any target belongs to the protected branch."""
     for target in targets:
-        try:
-            context = _git_context_for(target, cwd=cwd)
-        except (NewFeatureError, OSError):
-            continue
+        context = _git_context_for(target, cwd=cwd)
         if context is not None and context.branch == context.target_branch:
             if _is_ignored_root_sidecar(target, cwd=cwd, root=context.root):
                 continue
@@ -102,10 +98,7 @@ def blocks_target_merge(command: str, *, cwd: Path) -> bool:
         # NOTE: docs/ARCHITECTURE.md's Agent guards permit recovery on the target branch.
         if arguments[index + 1 :] in (["--continue"], ["--abort"], ["--quit"], ["--help"], ["-h"]):
             continue
-        try:
-            context = _git_context_for(cwd, cwd=cwd, git_options=tuple(arguments[:index]))
-        except (NewFeatureError, OSError):
-            continue
+        context = _git_context_for(cwd, cwd=cwd, git_options=tuple(arguments[:index]))
         if context is not None and context.branch == context.target_branch:
             return True
     return False
