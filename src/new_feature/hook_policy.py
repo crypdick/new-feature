@@ -53,30 +53,6 @@ _GIT_OPTIONS_WITH_VALUES = {
 
 
 @dataclass(frozen=True)
-class EditRequest:
-    """Describe paths an agent intends to edit."""
-
-    targets: tuple[Path, ...]
-
-
-@dataclass(frozen=True)
-class WorktreeRequest:
-    """Describe a direct Git worktree lifecycle operation."""
-
-    action: WorktreeAction
-
-
-type HookRequest = EditRequest | WorktreeRequest
-
-
-@dataclass(frozen=True)
-class PolicyDenial:
-    """Describe a request the managed-worktree policy disallows."""
-
-    reason: str
-
-
-@dataclass(frozen=True)
 class GitContext:
     """Describe the repository and branch that own a target path."""
 
@@ -85,11 +61,9 @@ class GitContext:
     target_branch: BranchName
 
 
-def evaluate_worktree_policy(request: HookRequest, *, cwd: Path) -> PolicyDenial | None:
-    """Return a denial when a normalized request bypasses managed worktrees."""
-    if isinstance(request, WorktreeRequest):
-        return PolicyDenial(_worktree_denial_reason(request.action))
-    for target in request.targets:
+def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
+    """Check whether any target belongs to the protected branch."""
+    for target in targets:
         try:
             context = _git_context_for(target, cwd=cwd)
         except (NewFeatureError, OSError):
@@ -97,8 +71,8 @@ def evaluate_worktree_policy(request: HookRequest, *, cwd: Path) -> PolicyDenial
         if context is not None and context.branch == context.target_branch:
             if _is_ignored_root_sidecar(target, cwd=cwd, root=context.root):
                 continue
-            return PolicyDenial(_edit_denial_reason(context))
-    return None
+            return True
+    return False
 
 
 def parse_worktree_action(command: str) -> WorktreeAction | None:
@@ -113,7 +87,7 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
     return None
 
 
-def evaluate_merge_policy(command: str, *, cwd: Path) -> PolicyDenial | None:
+def blocks_target_merge(command: str, *, cwd: Path) -> bool:
     """Reject starting a direct merge on the configured target branch."""
     for shell_command in _parse_shell_commands(command):
         if shell_command[0] == "cd" and len(shell_command) in {2, 3}:
@@ -133,12 +107,8 @@ def evaluate_merge_policy(command: str, *, cwd: Path) -> PolicyDenial | None:
         except (NewFeatureError, OSError):
             continue
         if context is not None and context.branch == context.target_branch:
-            return PolicyDenial(
-                f"Direct git merge on target branch '{context.target_branch}' is disabled. "
-                "Use `new-feature merge <feature-name>`. To finish or cancel an existing merge, "
-                "use `git merge --continue`, `git merge --abort`, or `git merge --quit`."
-            )
-    return None
+            return True
+    return False
 
 
 def _parse_shell_commands(command: str) -> list[list[str]]:
@@ -286,24 +256,3 @@ def _git_output(path: Path, *args: str) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
-
-
-def _edit_denial_reason(context: GitContext) -> str:
-    return (
-        "BLOCKED [new-feature-target-branch]: Direct agent edits are disabled on "
-        f"target branch '{context.target_branch}' at {context.root}. Run "
-        "`new-feature <feature-name> --no-agent`, then continue the work from "
-        "`.worktrees/<feature-name>`."
-    )
-
-
-def _worktree_denial_reason(action: WorktreeAction) -> str:
-    replacement = (
-        "`new-feature <feature-name> --no-agent`"
-        if action == "add"
-        else "`new-feature teardown <feature-name>`"
-    )
-    return (
-        f"BLOCKED [new-feature-worktree-{action}]: Direct `git worktree {action}` is disabled. "
-        f"Use {replacement} instead. Only with human approval, prefix this command with `HUMAN_PERMISSION_GRANTED=1`."
-    )

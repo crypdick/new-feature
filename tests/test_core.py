@@ -468,3 +468,10 @@ teardown = ["printf torn-down > teardown.txt"]
     assert "my_feature" not in manifest.features
     branches = subprocess.check_output(["git", "branch", "--list", "my-feature"], cwd=tmp_path, text=True)
     assert not branches.strip()
+
+
+@pytest.mark.parametrize("command", ["codex-hook", "claude-hook"])
+def test_stale_guard_invocation_cannot_create_a_feature(command):
+    with pytest.raises(SystemExit) as exc:
+        parse_args([command])
+    assert exc.value.code == 2

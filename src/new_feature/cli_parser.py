@@ -26,6 +26,9 @@ _COMMANDS = frozenset({
     "list",
     "status",
     "doctor",
+    # NOTE: docs/ARCHITECTURE.md retires native guards; stale hooks must not create features.
+    "codex-hook",
+    "claude-hook",
     "install-rules",
     "install-codex-hook",
     "install-claude-hook",

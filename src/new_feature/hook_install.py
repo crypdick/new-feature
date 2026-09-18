@@ -152,11 +152,10 @@ def _atomic_json_write(path: Path, document: JsonObject) -> None:
 
 def ensure_runner() -> None:
     """Install the standalone runner if absent, then verify its registration."""
+    # NOTE: docs/ARCHITECTURE.md documents PyPI bootstrap and hook enablement.
     try:
         if shutil.which("i-insist") is None:
-            subprocess.run(
-                ["uv", "tool", "install", "git+https://github.com/crypdick/i-insist@main"], check=True
-            )
+            subprocess.run(["uv", "tool", "install", "i-insist"], check=True)
         subprocess.run(["i-insist", "ensure"], check=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise NewFeatureError(

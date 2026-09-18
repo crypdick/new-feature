@@ -9,7 +9,7 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 - `git.py` and `commands.py`: Git and shell execution.
 - `feature_state.py` and `recovery.py`: inspection and repair.
 - `agent.py`: agent selection, prompts, and launch.
-- `hook_policy.py`, `rule_checker.py`, and `hook_install.py`: worktree policy, neutral i-insist checker, and provider-rule installation. `agent_hook.py` retains legacy entrypoints for older installations.
+- `hook_policy.py`, `rule_checker.py`, and `hook_install.py`: worktree policy, neutral i-insist checker, and provider-rule installation.
 
 Each original checkout owns its manifest. Creation records `initializing` before setup
 and `active` after success. Inspection reports unfinished setup as `setup-incomplete`.
@@ -39,7 +39,8 @@ and explicitly configured lifecycle environment values remain available.
 - Target edits: require a feature branch, except before the first commit or for the ignored, untracked root `.new-feature.local.toml`.
 - Target merges: require `new-feature merge`; feature-branch merges, `--continue`, `--abort`, `--quit`, help, and `git commit` remain allowed.
 - Scope: recognize Git directory options and simple `cd` commands, not arbitrary scripts, Git aliases, or shell file writes.
-- Installation: i-insist runs the rules; reinstall appends missing defaults and preserves custom messages and disabled rules.
+- Installation: `install-rules` installs i-insist from PyPI if missing, runs `i-insist ensure` to verify enabled hooks, and removes legacy native hook registrations. i-insist runs the rules; reinstall appends missing defaults and preserves custom messages and disabled rules.
+- Legacy `codex-hook` and `claude-hook` commands are retired. Rerun `install-rules` (with `--global` for user-level installs) to migrate native registrations; stale commands fail instead of creating worktrees.
 - Overrides: require a standalone human `I insist` message; i-insist owns approval.
 
 The generated module reference describes internals, not a stable external Python API.
