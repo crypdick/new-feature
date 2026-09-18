@@ -77,8 +77,9 @@ def test_top_level_help_explains_workflow_and_links_reference():
     assert "merge" in help_text
     assert "teardown" in help_text
     assert "setup" in help_text
-    assert "install-codex-hook" in help_text
-    assert "install-claude-hook" in help_text
+    assert "install-rules" in help_text
+    assert "install-codex-hook" not in help_text
+    assert "install-claude-hook" not in help_text
 
 
 @pytest.mark.parametrize(
@@ -90,8 +91,7 @@ def test_top_level_help_explains_workflow_and_links_reference():
         ("teardown", "discard uncommitted changes and unmerged feature commits"),
         ("list", "original checkout"),
         ("doctor", "never deletes unmerged work"),
-        ("install-codex-hook", "Restart Codex"),
-        ("install-claude-hook", "Restart Claude Code"),
+        ("install-rules", "~/.i-insist"),
     ],
 )
 def test_subcommand_help_explains_effects_and_safety(command: str, expected: str, capsys):
@@ -116,7 +116,7 @@ def test_setup_prompt_requires_inspection_approval_and_optional_hook_choice():
     assert "Recommend the ignored `.new-feature.local.toml` sidecar" in prompt
     assert "Present a concise proposed plan" in prompt
     assert "do not make further edits or install the hook until the user approves" in prompt
-    assert "optional repository-local Codex or Claude Code hook" in prompt
+    assert "optional repository-local i-insist rules with `new-feature install-rules`" in prompt
     assert "improving existing configuration when present" in prompt
 
 
@@ -470,7 +470,9 @@ teardown = ["printf torn-down > teardown.txt"]
     assert not branches.strip()
 
 
-@pytest.mark.parametrize("command", ["codex-hook", "claude-hook"])
+@pytest.mark.parametrize(
+    "command", ["codex-hook", "claude-hook", "install-codex-hook", "install-claude-hook"]
+)
 def test_stale_guard_invocation_cannot_create_a_feature(command):
     with pytest.raises(SystemExit) as exc:
         parse_args([command])

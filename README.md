@@ -182,4 +182,7 @@ reported by i-insist. Human `I insist` approval remains available.
 This changes the checker protocol. Coordinate runner and provider upgrades, then
 rerun `install-rules` to replace old registrations, including tracked repository
 registrations. Old rule fields and boolean checker output fail closed.
+Only `install-rules` is supported. The old `install-codex-hook` and
+`install-claude-hook` aliases are removed. Setup does not interpret or migrate
+old native guard registrations; it delegates harness setup to i-insist.
 Restart your copilot and review `/hooks` after installation.

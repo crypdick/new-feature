@@ -39,8 +39,8 @@ and explicitly configured lifecycle environment values remain available.
 - Target edits: require a feature branch, except before the first commit or for the ignored, untracked root `.new-feature.local.toml`.
 - Target merges: require `new-feature merge`; feature-branch merges, `--continue`, `--abort`, `--quit`, help, and `git commit` remain allowed.
 - Scope: recognize Git directory options and simple `cd` commands, not arbitrary scripts, Git aliases, or shell file writes.
-- Installation: `install-rules` installs or upgrades i-insist to at least 0.4.0 from PyPI, runs `i-insist ensure` to verify enabled hooks, and removes legacy native hook registrations. i-insist runs the rules; setup atomically replaces only the provider-owned registration. There are no per-rule user customizations.
-- Legacy `codex-hook` and `claude-hook` commands are retired. Rerun `install-rules` (with `--global` for user-level installs) to migrate native registrations; stale commands fail instead of creating worktrees.
+- Installation: `install-rules` installs or upgrades i-insist to at least 0.4.0 from PyPI, runs `i-insist ensure` to verify enabled hooks. i-insist runs the rules; setup atomically replaces only the provider-owned registration. There are no per-rule user customizations.
+- Only `install-rules` is supported, with `--global` for user-level installs. Native guard commands and installer aliases are rejected rather than interpreted as feature names. The provider does not read or migrate native hook settings; i-insist owns harness registration.
 - Checker protocol: JSON `null` allows; a nonempty string denies and supplies the message. Policy-loading and Git process exceptions propagate to the checker boundary, which exits nonzero so i-insist blocks and reports stderr.
 - Overrides: accept `I insist` anywhere in the latest human message; i-insist owns approval.
 
