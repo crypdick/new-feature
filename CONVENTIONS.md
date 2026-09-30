@@ -6,7 +6,7 @@ Combine small functions and plain objects directly. Add inheritance only when th
 
 ## Parse, don't validate
 
-Turn untrusted or unstructured inputs into typed values at the boundary. Downstream code should accept the parsed shape instead of repeatedly checking raw primitives.
+Turn untrusted or unstructured inputs into typed values at the boundary. Pass parsed values to downstream code instead of repeatedly checking raw primitives.
 
 ## Semantic types
 
