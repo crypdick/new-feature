@@ -154,16 +154,29 @@ def checkout_target(root: Path, *, target_branch: str) -> None:
     _git(root, "checkout", target_branch)
 
 
-def begin_merge_without_commit(root: Path, *, branch: str, target_branch: str) -> None:
-    """Start a conflict-free no-commit merge into the expected target branch."""
-    # NOTE: README.md's Lifecycle section documents this preflight safety guarantee.
-    ensure_merge_is_clean(root, branch=branch, target_branch=target_branch)
-    _git(root, "merge", "--no-commit", "--no-ff", branch)
+def merge_feature_branch(
+    root: Path,
+    *,
+    branch: str,
+    target_branch: str,
+    git_args: tuple[str, ...] = (),
+) -> None:
+    """Merge a feature branch into the expected target branch."""
+    # NOTE: README.md documents that custom Git arguments bypass the default conflict preflight.
+    if not git_args:
+        ensure_merge_is_clean(root, branch=branch, target_branch=target_branch)
+        git_args = ("--no-commit", "--no-ff")
+    _git(root, "merge", *git_args, branch)
 
 
-def commit_merge(root: Path, *, name: str) -> None:
-    """Commit the currently prepared merge using the feature name."""
-    _git(root, "commit", "-m", f"Merge feature {name}")
+def commit_merge(root: Path, *, name: str, git_args: tuple[str, ...] = ()) -> None:
+    """Finish a prepared merge with the appropriate message and editor behavior."""
+    if not git_args:
+        _git(root, "commit", "-m", f"Merge feature {name}")
+        return
+    # Git has already prepared MERGE_MSG or SQUASH_MSG from the supplied options.
+    commit_args = ("commit",) if {"--edit", "-e"}.intersection(git_args) else ("commit", "--no-edit")
+    _git(root, *commit_args)
 
 
 def resolve_revision(root: Path, ref: str) -> str:

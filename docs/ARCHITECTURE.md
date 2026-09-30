@@ -58,6 +58,8 @@ Guards enforce these policies through i-insist:
   ignored, untracked root `.new-feature.local.toml` file.
 - Merge into the target branch through `new-feature merge`. Merges on feature
   branches, `--continue`, `--abort`, `--quit`, help, and `git commit` remain allowed.
+- Arguments after the feature name pass through to `git merge`; supplying them skips
+  the default conflict preflight so Git's merge strategy options can take effect.
 
 Guards recognize Git directory options and simple `cd` commands. They don't inspect
 arbitrary scripts, Git aliases, or shell file writes.

@@ -106,6 +106,12 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     merge.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
+    merge.add_argument(
+        "git_args",
+        nargs=argparse.REMAINDER,
+        metavar="GIT_ARGS",
+        help="arguments passed through to `git merge`",
+    )
     merge.set_defaults(command="merge")
 
     execution = subparsers.add_parser(

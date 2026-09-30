@@ -219,7 +219,7 @@ def test_merge_start_failure_aborts_transaction(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         cli,
-        "begin_merge_without_commit",
+        "merge_feature_branch",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(NewFeatureError("conflict")),
     )
     monkeypatch.setattr(cli, "resolve_revision", lambda *_args: "target-before")
@@ -346,11 +346,13 @@ def test_concurrent_merges_serialize_target_checkout_mutation(
     monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env, failure_log: None)
     monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
     monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
-    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)
+    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name, git_args=(): None)
+    monkeypatch.setattr(cli, "merge_in_progress", lambda _root: True)
     monkeypatch.setattr(cli, "resolve_revision", lambda _root, _ref: "target-before")
 
-    def begin_merge(_root: Path, *, branch: str, target_branch: str) -> None:
+    def begin_merge(_root: Path, *, branch: str, target_branch: str, git_args: tuple[str, ...]) -> None:
         assert target_branch == "main"
+        assert not git_args
         mutations.append(branch)
         if branch == "first":
             first_started.set()
@@ -358,7 +360,7 @@ def test_concurrent_merges_serialize_target_checkout_mutation(
         else:
             second_started.set()
 
-    monkeypatch.setattr(cli, "begin_merge_without_commit", begin_merge)
+    monkeypatch.setattr(cli, "merge_feature_branch", begin_merge)
 
     def merge(name: str) -> None:
         results.append(cli._merge(tmp_path, name))

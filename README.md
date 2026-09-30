@@ -152,6 +152,12 @@ and refuses merge conflicts. Failed merges attempt to restore the target checkou
 and remove non-ignored untracked files created there. Rollback doesn't undo
 external effects such as database changes.
 
+Pass additional arguments after `NAME` to `git merge`, for example
+`new-feature merge NAME --no-ff --no-edit`. When Git arguments are supplied,
+they are passed as-is, and new-feature skips its default conflict preflight so
+Git's merge options control conflict handling. Git may commit or fast-forward
+before post-merge checks; failed merges or checks still attempt rollback.
+
 Merge-check failures print a log path under `.new-feature/diagnostics/merge-failures/`.
 If push fails, rerun merge to retry. Merge leaves the worktree in place. Run teardown
 afterward, before creating another feature with the same name.

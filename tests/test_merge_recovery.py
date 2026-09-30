@@ -43,6 +43,77 @@ def test_repeat_merge_checks_current_worktree_and_commits(
         assert (tmp_path / "feature.txt").read_text(encoding="utf-8") == "first\n"
 
 
+def test_merge_passes_strategy_options_to_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "conflict.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "conflict.txt"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "Add conflict fixture"], cwd=tmp_path, check=True)
+    assert cli.main(["create", "demo", "--no-agent"]) == 0
+
+    worktree = tmp_path / ".worktrees" / "demo"
+    (worktree / "conflict.txt").write_text("feature\n", encoding="utf-8")
+    subprocess.run(["git", "add", "conflict.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature value"], cwd=worktree, check=True)
+
+    (tmp_path / "conflict.txt").write_text("target\n", encoding="utf-8")
+    subprocess.run(["git", "add", "conflict.txt"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "Target value"], cwd=tmp_path, check=True)
+
+    assert cli.main(["merge", "demo", "-X", "theirs", "--no-edit"]) == 0
+    assert (tmp_path / "conflict.txt").read_text(encoding="utf-8") == "feature\n"
+    merge_parents = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert len(merge_parents) == 3
+
+
+def test_merge_honors_ff_only_option(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["create", "demo", "--no-agent"]) == 0
+
+    worktree = tmp_path / ".worktrees" / "demo"
+    (worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature value"], cwd=worktree, check=True)
+    feature_revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=worktree, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    assert cli.main(["merge", "demo", "--ff-only"]) == 0
+    target_revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    assert target_revision == feature_revision
+
+
+def test_merge_honors_no_commit_and_edit_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GIT_EDITOR", "true")
+    assert cli.main(["create", "demo", "--no-agent"]) == 0
+
+    worktree = tmp_path / ".worktrees" / "demo"
+    (worktree / "feature.txt").write_text("feature\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature value"], cwd=worktree, check=True)
+
+    assert cli.main(["merge", "demo", "--no-commit", "--no-ff", "--edit"]) == 0
+    merge_parents = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert len(merge_parents) == 3
+
+
 def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -69,10 +140,11 @@ def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
     monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
     monkeypatch.setattr(
         cli,
-        "begin_merge_without_commit",
-        lambda _root, *, branch, target_branch: merged.append(branch),
+        "merge_feature_branch",
+        lambda _root, *, branch, target_branch, git_args=(): merged.append(branch),
     )
-    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name: None)
+    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name, git_args=(): None)
+    monkeypatch.setattr(cli, "merge_in_progress", lambda _root: True)
     monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(cli, "resolve_revision", lambda _root, _ref: "target-before")
 

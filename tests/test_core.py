@@ -41,6 +41,17 @@ def test_parser_accepts_merge_command():
     args = parse_args(["merge", "my-feature"])
     assert args.command == "merge"
     assert args.name == "my-feature"
+    assert args.git_args == []
+
+
+def test_parser_preserves_git_merge_arguments():
+    args = parse_args(["merge", "my-feature", "--no-ff", "--no-edit", "-X", "theirs"])
+    assert args.git_args == ["--no-ff", "--no-edit", "-X", "theirs"]
+
+
+def test_parser_accepts_git_merge_separator():
+    args = parse_args(["merge", "my-feature", "--", "--no-edit"])
+    assert args.git_args == ["--no-edit"]
 
 
 def test_parser_accepts_setup_command():

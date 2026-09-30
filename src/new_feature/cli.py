@@ -20,12 +20,13 @@ from new_feature.feature_state import (
     reusable_feature_worktree,
 )
 from new_feature.git import (
-    begin_merge_without_commit,
     checkout_target,
     commit_merge,
     create_worktree,
     ensure_merge_is_clean,
     is_branch_merged,
+    merge_feature_branch,
+    merge_in_progress,
     pull_target,
     push_target,
     repo_root,
@@ -105,7 +106,7 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         preview = args.command == "teardown" and args.dry_run
         with nullcontext() if preview else feature_operation_lock(root, slugify(args.name)):
             return (
-                _merge(root, args.name)
+                _merge(root, args.name, git_args=tuple(args.git_args))
                 if args.command == "merge"
                 else teardown(root, args.name, force=args.force, dry_run=args.dry_run)
             )
@@ -262,21 +263,41 @@ def _record_status(root: Path, key: str, *, status: FeatureStatus) -> FeatureRec
 
 
 def _commit_feature_merge(
-    root: Path, config: ProjectConfig, key: str, record: FeatureRecord
+    root: Path,
+    config: ProjectConfig,
+    key: str,
+    record: FeatureRecord,
+    *,
+    git_args: tuple[str, ...],
 ) -> FeatureRecord:
     if not is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
-        begin_merge_without_commit(root, branch=record.branch, target_branch=record.target_branch)
+        merge_feature_branch(
+            root,
+            branch=record.branch,
+            target_branch=record.target_branch,
+            git_args=git_args,
+        )
+        # NOTE: README.md documents that custom Git arguments may commit before post-merge checks.
+        pending_commit = merge_in_progress(root) or not worktree_is_clean(root)
         run_commands(
             config.post_merge,
             cwd=root,
             env=record.env,
             failure_log=merge_failure_log(root, record.slug, phase="post-merge"),
         )
-        commit_merge(root, name=record.name)
+        if pending_commit:
+            commit_merge(root, name=record.name, git_args=git_args)
     return _record_status(root, key, status="merged")
 
 
-def _merge_target(root: Path, config: ProjectConfig, key: str, record: FeatureRecord) -> FeatureRecord:
+def _merge_target(
+    root: Path,
+    config: ProjectConfig,
+    key: str,
+    record: FeatureRecord,
+    *,
+    git_args: tuple[str, ...],
+) -> FeatureRecord:
     with target_merge_lock(root):
         if not worktree_is_clean(root):
             raise NewFeatureError(
@@ -286,7 +307,7 @@ def _merge_target(root: Path, config: ProjectConfig, key: str, record: FeatureRe
         checkout_target(root, target_branch=record.target_branch)
         target_revision = resolve_revision(root, "HEAD")
         try:
-            record = _commit_feature_merge(root, config, key, record)
+            record = _commit_feature_merge(root, config, key, record, git_args=git_args)
         except BaseException as merge_error:
             try:
                 rollback_merge(root, revision=target_revision)
@@ -300,7 +321,7 @@ def _merge_target(root: Path, config: ProjectConfig, key: str, record: FeatureRe
         return record
 
 
-def _merge(root: Path, name: str) -> int:
+def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = ()) -> int:
     config = load_project_config(root)
     key = feature_key(slugify(name))
     with manifest_lock(root):
@@ -322,7 +343,8 @@ def _merge(root: Path, name: str) -> int:
                 push_target(root, target_branch=record.target_branch)
             print(build_teardown_reminder(record.slug))
             return 0
-    ensure_merge_is_clean(root, branch=record.branch, target_branch=record.target_branch)
+    if not git_args:
+        ensure_merge_is_clean(root, branch=record.branch, target_branch=record.target_branch)
     if config.pre_merge:
         print("new-feature: running pre-merge checks", file=sys.stderr, flush=True)
     # NOTE: README.md documents retained merge-check diagnostics.
@@ -334,6 +356,6 @@ def _merge(root: Path, name: str) -> int:
     )
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
-    record = _merge_target(root, config, key, record)
+    record = _merge_target(root, config, key, record, git_args=git_args)
     print(build_teardown_reminder(record.slug))
     return 0
