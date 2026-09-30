@@ -334,7 +334,7 @@ def test_lifecycle_warns_when_config_changed(
         config_fingerprint=config_fingerprint(ProjectConfig()),
     )
 
-    cli._warn_if_config_changed(ProjectConfig(push=True), record)
+    cli.warn_if_config_changed(ProjectConfig(push=True), record)
     assert "configuration changed" in capsys.readouterr().err
 
 

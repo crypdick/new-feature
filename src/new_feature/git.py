@@ -203,19 +203,20 @@ def remove_worktree_and_branch(
     if force:
         args.append("--force")
     args.append(str(worktree))
+    # NOTE: README.md requires JSON repair stdout to contain only its report.
     try:
-        _git(root, *args)
+        _git(root, *args, capture=True)
     except NewFeatureError:
         if not worktree.exists():
-            _git(root, "worktree", "prune")
+            _git(root, "worktree", "prune", capture=True)
         elif not force and worktree_is_clean(worktree):
             # Git requires --force to remove a worktree containing a submodule,
             # even when both worktree and submodule are clean.
-            _git(root, "worktree", "remove", "--force", str(worktree))
+            _git(root, "worktree", "remove", "--force", str(worktree), capture=True)
         else:
             raise
     if branch is not None:
-        _git(root, "branch", "-D" if force or force_branch else "-d", branch)
+        _git(root, "branch", "-D" if force or force_branch else "-d", branch, capture=True)
 
 
 def _git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:

@@ -158,8 +158,24 @@ afterward, before creating another feature with the same name.
 
 Teardown runs your cleanup commands, then removes the worktree and branch. If
 cleanup fails, removal stops even with `--force`. Use `--force` only to discard
-uncommitted or unmerged work deliberately. If the feature record is missing,
-teardown skips configured cleanup and can still remove the worktree.
+uncommitted or unmerged work deliberately, or bypass process protection. If the
+feature record is missing, teardown skips configured cleanup and can still remove the worktree.
+
+Use `new-feature teardown NAME --dry-run` to preview the absolute worktree path,
+branch, target, cleanup commands, removal actions, and refusal reasons. Preview
+exits 1 when preflight refuses teardown and 0 otherwise. It runs no cleanup and
+creates no lock files or reservations. Concurrent changes can invalidate its
+snapshot, and preview cannot predict cleanup failure. `--force --dry-run` previews
+forced removal; cleanup failure still stops real removal.
+
+On Linux, teardown also refuses processes owned by your user whose working
+directory is the worktree or a directory beneath it. It checks before cleanup and
+again immediately before removal. Stop those processes or use
+`--force`, which bypasses this check without stopping them. Process protection is
+best effort: it skips processes that disappear or have unreadable `/proc/PID/cwd`,
+does not find processes that only hold open files or work elsewhere, and cannot
+prevent processes entering the worktree after the scan. An unavailable `/proc`
+scan refuses teardown unless `--force` is supplied.
 
 If you tear down the worktree containing your shell's current directory, change back
 to the original checkout afterward; a CLI cannot move its parent shell.
@@ -170,6 +186,28 @@ target, except branches with unmerged merge commits.
 Use `new-feature doctor --repair` to clean up stale feature records and branches
 whose worktrees no longer exist. Repair preserves unmerged work and unreadable
 worktrees. It doesn't recreate missing worktrees. Doctor exits nonzero while issues remain.
+
+`list --json` (also `status --json`) and `doctor --json` emit one JSON document on
+stdout. Diagnostics remain on stderr. `schema_version` is `1`; successful reports
+contain `command` (`list` or `doctor`), `ok`, and a `features` array sorted by slug. List's `ok` means
+inspection succeeded; doctor's `ok` means no feature has remaining issues.
+Each feature includes `name`, `slug`, `branch`, `target_branch`, absolute `worktree`,
+lifecycle `status`, human `state`, `issues`, `worktree_exists`, `branch_exists`,
+`clean`, `integration`, `config_drift`, `setup_incomplete`, and `worktree_error`.
+`clean` and `integration` are null when unavailable; `worktree_error` is null when
+inspection succeeds. Integration is `merged`, `patch-equivalent`, or `unmerged`.
+Lifecycle status is `initializing`, `active`, or `merged`. Issue labels are
+`setup-incomplete`, `missing-worktree`, `worktree-error`, `missing-branch`, `dirty`,
+`unmerged`, and `config-drift`. Allocated environment values are omitted.
+
+Doctor also includes `repairs`, an array of `{"slug": "...", "message": "..."}`.
+`doctor --repair --json` reports remaining features after repair. Expected command
+failures emit `{"schema_version": 1, "error": {"code": "command-failed", "message": "..."}}`
+and exit 1. Invalid inspection arguments with `--json` emit the same error envelope
+with code `invalid-arguments` and exit 2. Doctor still exits 1 while reported issues remain.
+Treat documented field names, issue labels, and error codes as stable within
+schema version 1; accept additional fields and inspect `issues` and `integration`
+instead of parsing human `state` or messages.
 
 Setup and creation ignore `.new-feature/`, `.worktrees/`, and `*.local.toml` locally
 without changing your tracked `.gitignore` file.

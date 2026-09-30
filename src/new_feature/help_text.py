@@ -49,7 +49,8 @@ Run from the original checkout or a managed feature worktree, then use teardown.
 
 TEARDOWN_DESCRIPTION = """\
 Run cleanup, then remove the worktree and branch. Refuse dirty or unmerged work
-unless --force is supplied. Cleanup failure stops removal even with --force.
+and same-user processes inside the worktree unless --force is supplied.
+Use --dry-run to preview cleanup, removal, and refusals without changing resources. Cleanup failure stops removal even with --force.
 Without a manifest entry, .worktrees/NAME can still be removed, but configured
 cleanup is skipped because its environment is unavailable.
 Run from the original checkout or a managed feature worktree.
@@ -57,6 +58,7 @@ Run from the original checkout or a managed feature worktree.
 
 LIST_DESCRIPTION = """\
 Show managed features, their state, branches, and worktree paths.
+Use --json for versioned machine-readable state.
 Run from the original checkout or a managed feature worktree.
 """
 
@@ -64,6 +66,7 @@ DOCTOR_DESCRIPTION = """\
 Find stale records, missing branches or worktrees, and configuration drift.
 Exit nonzero while issues remain. Repair never deletes unmerged work.
 Repair removes stale state; it does not recreate missing worktrees.
+Use --json for machine-readable state; --repair --json reports remaining features.
 Run from the original checkout or a managed feature worktree.
 """
 

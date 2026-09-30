@@ -140,7 +140,12 @@ def build_parser() -> argparse.ArgumentParser:
     teardown.add_argument(
         "--force",
         action="store_true",
-        help="discard uncommitted changes and unmerged feature commits",
+        help="discard uncommitted changes and unmerged feature commits; bypass process guards",
+    )
+    teardown.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="preview cleanup, removal, and refusal conditions without changing resources",
     )
     teardown.set_defaults(command="teardown")
 
@@ -150,6 +155,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="show managed features and their current state",
         description=LIST_DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    feature_list.add_argument(
+        "--json", dest="json_output", action="store_true", help="emit versioned machine-readable state"
     )
     feature_list.set_defaults(command="list")
 
@@ -164,6 +172,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--repair",
         action="store_true",
         help="remove stale records and integrated branches with missing worktrees",
+    )
+    doctor.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="emit versioned machine-readable state and repairs",
     )
     doctor.set_defaults(command="doctor")
 

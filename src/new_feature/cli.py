@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse  # noqa: TC003 - package-wide beartype needs annotation types at runtime
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 from new_feature import agent as agent_module
@@ -15,9 +16,6 @@ from new_feature.control_checkout import control_root
 from new_feature.errors import NewFeatureError
 from new_feature.execution import execute_feature
 from new_feature.feature_state import (
-    IntegrationState,
-    inspect_feature,
-    inspect_integration,
     require_setup_complete,
     reusable_feature_worktree,
 )
@@ -30,15 +28,14 @@ from new_feature.git import (
     is_branch_merged,
     pull_target,
     push_target,
-    remove_worktree_and_branch,
     repo_root,
     resolve_revision,
     rollback_merge,
-    worktree_branch,
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.hook_install import install_rules
+from new_feature.inspection import doctor, list_features, warn_if_config_changed, write_json
 from new_feature.lifecycle import merge_failure_log, now
 from new_feature.manifest import (
     FeatureRecord,
@@ -49,9 +46,9 @@ from new_feature.manifest import (
     save_manifest,
     target_merge_lock,
 )
-from new_feature.recovery import repair_feature
 from new_feature.rule_checker import main as check_rule
 from new_feature.slug import feature_key, slugify
+from new_feature.teardown import teardown
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
 
 
@@ -60,10 +57,21 @@ def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if len(raw_argv) == 2 and raw_argv[0] == "check-rule":
         return check_rule(raw_argv[1])
-    args = parse_args(raw_argv)
+    json_requested = "--json" in raw_argv and raw_argv[0] in {"list", "status", "doctor"}
+    try:
+        args = parse_args(raw_argv)
+    except SystemExit as exc:
+        if not json_requested or exc.code == 0:
+            raise
+        write_json({
+            "error": {"code": "invalid-arguments", "message": "invalid command arguments; see stderr"}
+        })
+        return 2
     try:
         return _run(args)
     except NewFeatureError as exc:
+        if getattr(args, "json_output", False):
+            write_json({"error": {"code": "command-failed", "message": str(exc)}})
         print(f"new-feature: {exc}", file=sys.stderr)
         return 1
 
@@ -94,18 +102,19 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             agent_options=agent_module.AgentLaunchOptions(args.agent, args.prompt),
         )
     if args.command in {"merge", "teardown"}:
-        with feature_operation_lock(root, slugify(args.name)):
+        preview = args.command == "teardown" and args.dry_run
+        with nullcontext() if preview else feature_operation_lock(root, slugify(args.name)):
             return (
                 _merge(root, args.name)
                 if args.command == "merge"
-                else _teardown(root, args.name, force=args.force)
+                else teardown(root, args.name, force=args.force, dry_run=args.dry_run)
             )
     if args.command == "exec":
         return execute_feature(root, args.name, args.argv)
     if args.command == "list":
-        return _list_features(root)
+        return list_features(root, json_output=args.json_output)
     if args.command == "doctor":
-        return _doctor(root, repair=args.repair)
+        return doctor(root, repair=args.repair, json_output=args.json_output)
     raise NewFeatureError(f"unknown command: {args.command}")
 
 
@@ -201,14 +210,14 @@ def _create(
                 record = _record_status(root, key, status="active")
             except BaseException as setup_error:
                 try:
-                    _teardown(root, slug, force=True)
+                    teardown(root, slug, force=True)
                 except BaseException as teardown_error:
                     raise NewFeatureError(
                         f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
                     ) from teardown_error
                 raise
         else:
-            _warn_if_config_changed(config, record)
+            warn_if_config_changed(config, record)
     if agent_command is None:
         print(build_worktree_ready_message(worktree))
         return 0
@@ -300,7 +309,7 @@ def _merge(root: Path, name: str) -> int:
         if record is None:
             raise NewFeatureError(f"unknown feature: {name}")
     require_setup_complete(record)
-    _warn_if_config_changed(config, record)
+    warn_if_config_changed(config, record)
     worktree = root / record.worktree
     if not worktree_is_clean(worktree):
         raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
@@ -328,116 +337,3 @@ def _merge(root: Path, name: str) -> int:
     record = _merge_target(root, config, key, record)
     print(build_teardown_reminder(record.slug))
     return 0
-
-
-def _teardown(root: Path, name: str, *, force: bool) -> int:
-    config = load_project_config(root)
-    slug = slugify(name)
-    key = feature_key(slug)
-    with manifest_lock(root):
-        manifest = load_manifest(root)
-        record = manifest.features.get(key)
-    if record is None:
-        # NOTE: README.md documents teardown without a manifest entry.
-        worktree = root / ".worktrees" / slug
-        if not worktree.is_dir():
-            raise NewFeatureError(f"unknown feature: {name}")
-        branch = worktree_branch(worktree)
-        target_branch = config.target_branch
-    else:
-        _warn_if_config_changed(config, record)
-        worktree = root / record.worktree
-        branch = record.branch
-        target_branch = record.target_branch
-    if not worktree.is_dir():
-        raise NewFeatureError(
-            "feature worktree is missing; run `new-feature doctor --repair` to recover an integrated branch"
-        )
-    force_branch = False
-    if not force:
-        if not worktree_is_clean(worktree):
-            raise NewFeatureError("feature worktree has uncommitted changes; pass --force to abandon them")
-        if branch is None:
-            raise NewFeatureError("unmanaged worktree is detached; pass --force to abandon it")
-        integration = inspect_integration(root, branch=branch, target_branch=target_branch)
-        if integration is IntegrationState.UNMERGED:
-            raise NewFeatureError("feature branch has unmerged commits; pass --force to abandon them")
-        force_branch = True
-    if record is None:
-        print("new-feature: unmanaged worktree; skipping configured teardown commands", file=sys.stderr)
-    else:
-        run_commands(config.teardown, cwd=worktree, env=record.env)
-    remove_worktree_and_branch(
-        root,
-        branch=branch,
-        worktree=worktree,
-        force=force,
-        force_branch=force_branch,
-    )
-    if record is not None:
-        with manifest_lock(root):
-            manifest = load_manifest(root)
-            del manifest.features[key]
-            save_manifest(root, manifest)
-    return 0
-
-
-def _list_features(root: Path) -> int:
-    config = load_project_config(root)
-    fingerprint = config_fingerprint(config)
-    manifest = load_manifest(root)
-    print("NAME\tSTATE\tBRANCH\tWORKTREE")
-    for record in sorted(manifest.features.values(), key=lambda item: item.slug):
-        state = inspect_feature(root, record, fingerprint)
-        print(f"{record.slug}\t{state.describe()}\t{record.branch}\t{record.worktree}")
-        if state.worktree_error is not None:
-            print(f"new-feature: {record.slug}: {state.worktree_error}", file=sys.stderr)
-    return 0
-
-
-def _doctor(root: Path, *, repair: bool) -> int:
-    config = load_project_config(root)
-    fingerprint = config_fingerprint(config)
-    manifest = load_manifest(root)
-    states = {key: inspect_feature(root, record, fingerprint) for key, record in manifest.features.items()}
-    for key, state in sorted(states.items()):
-        print(f"{manifest.features[key].slug}: {state.describe()}")
-        if state.worktree_error is not None:
-            print(f"new-feature: {manifest.features[key].slug}: {state.worktree_error}", file=sys.stderr)
-
-    repaired: set[str] = set()
-    if repair:
-        for key, observed in manifest.features.items():
-            with (
-                feature_operation_lock(root, observed.slug),
-                target_merge_lock(root),
-                manifest_lock(root),
-            ):
-                current = load_manifest(root)
-                record = current.features.get(key)
-                if record is None:
-                    repaired.add(key)
-                    continue
-                state = inspect_feature(root, record, fingerprint)
-                states[key] = state
-                message = repair_feature(root, record, state)
-                if message:
-                    del current.features[key]
-                    save_manifest(root, current)
-                    repaired.add(key)
-                    print(f"repaired: {message}")
-
-    remaining_issues = [state for key, state in states.items() if key not in repaired and state.issues()]
-    if remaining_issues:
-        return 1
-    if not states:
-        print("doctor: ok")
-    return 0
-
-
-def _warn_if_config_changed(config: ProjectConfig, record: FeatureRecord) -> None:
-    if record.config_fingerprint and record.config_fingerprint != config_fingerprint(config):
-        print(
-            f"new-feature: warning: project configuration changed since {record.slug} was created",
-            file=sys.stderr,
-        )
