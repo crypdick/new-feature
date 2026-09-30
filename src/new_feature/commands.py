@@ -41,13 +41,22 @@ def run_commands(
     failure_log.unlink()
 
 
-def _run_command(command: str, *, cwd: Path, env: dict[str, str], log: TextIO | None = None) -> int:
+def run_argv(argv: list[str], *, cwd: Path, env: dict[str, str]) -> int:
+    """Run literal arguments with standard streams inherited and owned cancellation."""
+    # NOTE: README.md documents exec's recorded environment and explicit shell syntax.
+    returncode = _run_command(argv, cwd=cwd, env={**git_environment(), **env})
+    return 128 - returncode if returncode < 0 else returncode
+
+
+def _run_command(
+    command: str | list[str], *, cwd: Path, env: dict[str, str], log: TextIO | None = None
+) -> int:
     """Run one command in an owned process group."""
     logger.info("running configured command", extra={"command": command})
     try:
         process = subprocess.Popen(
             command,
-            shell=True,
+            shell=isinstance(command, str),
             cwd=cwd,
             env=env,
             stdout=subprocess.PIPE if log is not None else None,
@@ -56,7 +65,9 @@ def _run_command(command: str, *, cwd: Path, env: dict[str, str], log: TextIO | 
             start_new_session=True,
         )
     except OSError as exc:
-        raise NewFeatureError(f"cannot start configured command: {command}: {exc}") from exc
+        raise NewFeatureError(
+            f"cannot start {'configured command' if isinstance(command, str) else 'command'}: {command}: {exc}"
+        ) from exc
     try:
         if log is not None:
             for line in process.stdout or ():

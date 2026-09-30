@@ -166,14 +166,16 @@ def test_doctor_tolerates_teardown_between_inspection_and_repair(tmp_path, monke
     init_git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert cli.main(["create", "demo", "--no-agent"]) == 0
-    inspect_feature = cli.inspect_feature
+    from new_feature import inspection
+
+    inspect_feature = inspection.inspect_feature
 
     def inspect_then_teardown(*args):
         state = inspect_feature(*args)
         assert cli.main(["teardown", "demo"]) == 0
         return state
 
-    monkeypatch.setattr(cli, "inspect_feature", inspect_then_teardown)
+    monkeypatch.setattr(inspection, "inspect_feature", inspect_then_teardown)
     assert cli.main(["doctor", "--repair"]) == 0
     assert not load_manifest(tmp_path).features
 

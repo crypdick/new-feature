@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import tomllib
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -96,6 +97,25 @@ def feature_operation_lock(repo_root: Path, slug: str) -> Iterator[None]:
             yield
     except Timeout as exc:
         raise NewFeatureError(f"feature operation already in progress: {slug}") from exc
+
+
+@contextmanager
+def feature_execution_lock(repo_root: Path, slug: str) -> Iterator[None]:
+    """Allow concurrent commands while excluding feature lifecycle mutations."""
+    # NOTE: docs/ARCHITECTURE.md documents shared exec locks on FileLock's POSIX flock inode.
+    lock_path = repo_root / MANIFEST_DIR / FEATURE_LOCK_DIR / f"{slug}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise NewFeatureError(f"feature operation already in progress: {slug}") from exc
+        except OSError as exc:
+            raise NewFeatureError(f"cannot acquire feature execution lock: {exc}") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def load_manifest(repo_root: Path) -> Manifest:

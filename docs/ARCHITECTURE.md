@@ -3,10 +3,13 @@
 The Python package lives in `src/new_feature/`. Start with these modules:
 
 - `app.py` and `cli_parser.py`: entry point, signals, and argument parsing.
-- `cli.py`: create, merge, teardown, and inspection workflows.
+- `cli.py`: lifecycle dispatch, creation, and merge workflows.
+- `inspection.py`: human and versioned JSON inspection and repair reports.
+- `teardown.py` and `processes.py`: teardown preview and Linux process protection.
 - `config.py` and `allocator.py`: configuration and environment allocation.
 - `manifest.py`: feature records and locks.
-- `git.py` and `commands.py`: Git and shell execution.
+- `git.py`, `commands.py`, and `execution.py`: Git, shell commands, and feature execution.
+- `control_checkout.py`: verified ownership lookup across registered Git worktrees.
 - `feature_state.py` and `recovery.py`: inspection and repair.
 - `agent.py`: agent selection, prompts, and launch.
 - `hook_policy.py`, `rule_checker.py`, and `hook_install.py`: worktree policy,
@@ -14,10 +17,21 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 
 Each original checkout owns its manifest. Creation records `initializing` before setup
 and `active` after success. Inspection reports unfinished setup as `setup-incomplete`.
+Lifecycle commands resolve the current checkout through Git's worktree inventory and
+matching manifest paths and branches. One matching owner selects that checkout;
+multiple owners or a branch mismatch fail. Unreadable manifests fail for the current
+checkout and ancestors containing it under `.worktrees`; unrelated siblings are skipped.
+Unmanaged linked worktrees keep their own state. No owner is inferred from the common
+Git directory. The raw Git root resolver used by guards stays checkout-local.
 
 Create, merge, teardown, and repair share a per-feature lock. Manifest updates use a
 separate lock. Pre-merge checks can run concurrently for different features, but a
-target merge lock serializes checkout changes.
+target merge lock serializes checkout changes. On POSIX, `exec` holds a shared `flock`
+on the same inode as the exclusive FileLock lifecycle lock. Concurrent commands can
+run, while feature mutations fail fast until all commands exit. Command failure and
+cancellation release the lock. Commands own a process group for cancellation cleanup.
+Teardown preview takes no locks and mutates no state; its snapshot can change before
+a real teardown.
 
 Merge selects the target checkout before capturing the revision for rollback. Failures
 during merge, post-merge checks, commit, or bookkeeping trigger restoration. Push happens
@@ -28,7 +42,8 @@ commits. Teardown and repair also accept patch-equivalent branches, excluding un
 merge commits whose conflict resolutions patch comparison can't represent.
 
 Inspection reports unreadable worktrees as `worktree-error` and leaves them untouched.
-`list` still succeeds, while `doctor` exits nonzero.
+`list` still succeeds, while `doctor` exits nonzero. JSON inspection and teardown
+preview contracts are documented in the [README](index.md#lifecycle).
 
 Git commands, lifecycle commands, and agents ignore inherited Git repository-location
 overrides. Their working directory selects the repository. Transport, authentication,

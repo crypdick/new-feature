@@ -15,6 +15,21 @@ def repo_root(cwd: Path) -> Path:
     return Path(result.stdout.strip())
 
 
+def worktree_inventory(root: Path) -> dict[Path, str | None]:
+    """Return registered worktree paths and their checked-out local branches."""
+    result = _git(root, "worktree", "list", "--porcelain", "-z", capture=True)
+    inventory: dict[Path, str | None] = {}
+    for entry in result.stdout.strip("\0").split("\0\0"):
+        fields = entry.split("\0")
+        path = Path(fields[0].removeprefix("worktree ")).resolve()
+        branch = next(
+            (field.removeprefix("branch refs/heads/") for field in fields if field.startswith("branch ")),
+            None,
+        )
+        inventory[path] = branch
+    return inventory
+
+
 def local_exclude_path(root: Path) -> Path:
     """Resolve the local exclude file shared by the repository's worktrees."""
     result = _git(root, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude", capture=True)
@@ -188,19 +203,20 @@ def remove_worktree_and_branch(
     if force:
         args.append("--force")
     args.append(str(worktree))
+    # NOTE: README.md requires JSON repair stdout to contain only its report.
     try:
-        _git(root, *args)
+        _git(root, *args, capture=True)
     except NewFeatureError:
         if not worktree.exists():
-            _git(root, "worktree", "prune")
+            _git(root, "worktree", "prune", capture=True)
         elif not force and worktree_is_clean(worktree):
             # Git requires --force to remove a worktree containing a submodule,
             # even when both worktree and submodule are clean.
-            _git(root, "worktree", "remove", "--force", str(worktree))
+            _git(root, "worktree", "remove", "--force", str(worktree), capture=True)
         else:
             raise
     if branch is not None:
-        _git(root, "branch", "-D" if force or force_branch else "-d", branch)
+        _git(root, "branch", "-D" if force or force_branch else "-d", branch, capture=True)
 
 
 def _git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
