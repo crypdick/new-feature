@@ -11,7 +11,9 @@ from new_feature.allocator import allocate_env
 from new_feature.cli_parser import parse_args
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
+from new_feature.control_checkout import control_root
 from new_feature.errors import NewFeatureError
+from new_feature.execution import execute_feature
 from new_feature.feature_state import (
     IntegrationState,
     inspect_feature,
@@ -69,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
 def _run(args: argparse.Namespace) -> int:
     if args.command == "install-rules":
         return _install_rules(args)
-    return _dispatch(args, repo_root(Path.cwd()))
+    return _dispatch(args, control_root(Path.cwd()))
 
 
 def _install_rules(args: argparse.Namespace) -> int:
@@ -93,9 +95,13 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         )
     if args.command in {"merge", "teardown"}:
         with feature_operation_lock(root, slugify(args.name)):
-            if args.command == "merge":
-                return _merge(root, args.name)
-            return _teardown(root, args.name, force=args.force)
+            return (
+                _merge(root, args.name)
+                if args.command == "merge"
+                else _teardown(root, args.name, force=args.force)
+            )
+    if args.command == "exec":
+        return execute_feature(root, args.name, args.argv)
     if args.command == "list":
         return _list_features(root)
     if args.command == "doctor":

@@ -6,7 +6,8 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 - `cli.py`: create, merge, teardown, and inspection workflows.
 - `config.py` and `allocator.py`: configuration and environment allocation.
 - `manifest.py`: feature records and locks.
-- `git.py` and `commands.py`: Git and shell execution.
+- `git.py`, `commands.py`, and `execution.py`: Git, shell commands, and feature execution.
+- `control_checkout.py`: verified ownership lookup across registered Git worktrees.
 - `feature_state.py` and `recovery.py`: inspection and repair.
 - `agent.py`: agent selection, prompts, and launch.
 - `hook_policy.py`, `rule_checker.py`, and `hook_install.py`: worktree policy,
@@ -14,10 +15,19 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 
 Each original checkout owns its manifest. Creation records `initializing` before setup
 and `active` after success. Inspection reports unfinished setup as `setup-incomplete`.
+Lifecycle commands resolve the current checkout through Git's worktree inventory and
+matching manifest paths and branches. One matching owner selects that checkout;
+multiple owners or a branch mismatch fail. Unreadable manifests fail for the current
+checkout and ancestors containing it under `.worktrees`; unrelated siblings are skipped.
+Unmanaged linked worktrees keep their own state. No owner is inferred from the common
+Git directory. The raw Git root resolver used by guards stays checkout-local.
 
 Create, merge, teardown, and repair share a per-feature lock. Manifest updates use a
 separate lock. Pre-merge checks can run concurrently for different features, but a
-target merge lock serializes checkout changes.
+target merge lock serializes checkout changes. On POSIX, `exec` holds a shared `flock`
+on the same inode as the exclusive FileLock lifecycle lock. Concurrent commands can
+run, while feature mutations fail fast until all commands exit. Command failure and
+cancellation release the lock. Commands own a process group for cancellation cleanup.
 
 Merge selects the target checkout before capturing the revision for rollback. Failures
 during merge, post-merge checks, commit, or bookkeeping trigger restoration. Push happens

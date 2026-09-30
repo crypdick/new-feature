@@ -35,9 +35,11 @@ new-feature merge my-feature
 new-feature teardown my-feature
 ```
 
-Run lifecycle commands from the original checkout. Use the feature worktree for edits
-and commits. If you're already in a coding agent session, use the printed absolute
-worktree path for the agent's tools.
+Run lifecycle commands from the original checkout or a managed feature worktree.
+Commands use the owning checkout's configuration and manifest. Ordinary linked worktrees
+keep their own lifecycle state unless a manifest explicitly manages them. Use feature
+worktrees for edits and commits. If you're already in a coding agent session, use the
+printed absolute worktree path for the agent's tools.
 
 To launch an agent in the worktree, use `new-feature my-feature --agent claude`.
 Without `--agent`, creation uses `default_agent` if configured. Use `--no-agent`
@@ -118,8 +120,16 @@ A nonzero exit stops the operation.
 
 Commands and launched agents receive allocated values plus `NEW_FEATURE_NAME`,
 `NEW_FEATURE_SLUG`, `NEW_FEATURE_BRANCH`, `NEW_FEATURE_WORKTREE`, and `NEW_FEATURE_REPO_ROOT`.
-Existing shells and agent sessions don't inherit these values. Read them from
-`.new-feature/manifest.toml` for manual commands.
+Existing shells and agent sessions don't inherit these values. Run manual commands with
+`new-feature exec NAME -- COMMAND ...` to restore the recorded environment and working
+directory, for example `new-feature exec my-feature -- uv run pytest`. Names normalize
+to exact slugs; partial matches are rejected. Standard input, output, and errors are
+inherited, and the child's exit code is returned (128 + signal for signal termination).
+Arguments run without a shell; use `sh -c` explicitly for shell expansion or pipelines.
+
+Multiple `exec` commands can run in one feature, such as a server and its tests.
+Creation, merge, teardown, and repair of that feature are refused while an `exec`
+command runs. Interrupted commands terminate their process group.
 
 Port reservations span all port variables in this repository. Availability checks don't
 hold ports open or reserve them against other repositories or programs. Integer reservations
@@ -150,6 +160,9 @@ Teardown runs your cleanup commands, then removes the worktree and branch. If
 cleanup fails, removal stops even with `--force`. Use `--force` only to discard
 uncommitted or unmerged work deliberately. If the feature record is missing,
 teardown skips configured cleanup and can still remove the worktree.
+
+If you tear down the worktree containing your shell's current directory, change back
+to the original checkout afterward; a CLI cannot move its parent shell.
 
 Teardown accepts `patch-equivalent` branches, whose patches already exist in the
 target, except branches with unmerged merge commits.

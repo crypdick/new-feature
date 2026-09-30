@@ -15,6 +15,21 @@ def repo_root(cwd: Path) -> Path:
     return Path(result.stdout.strip())
 
 
+def worktree_inventory(root: Path) -> dict[Path, str | None]:
+    """Return registered worktree paths and their checked-out local branches."""
+    result = _git(root, "worktree", "list", "--porcelain", "-z", capture=True)
+    inventory: dict[Path, str | None] = {}
+    for entry in result.stdout.strip("\0").split("\0\0"):
+        fields = entry.split("\0")
+        path = Path(fields[0].removeprefix("worktree ")).resolve()
+        branch = next(
+            (field.removeprefix("branch refs/heads/") for field in fields if field.startswith("branch ")),
+            None,
+        )
+        inventory[path] = branch
+    return inventory
+
+
 def local_exclude_path(root: Path) -> Path:
     """Resolve the local exclude file shared by the repository's worktrees."""
     result = _git(root, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude", capture=True)

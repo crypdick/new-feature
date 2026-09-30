@@ -11,7 +11,7 @@ Workflow:
   new-feature teardown my-feature
 
 Use --agent codex or --agent claude to launch an agent in the worktree.
-Run lifecycle commands from the original checkout.
+Run lifecycle commands from the original checkout or any managed feature worktree.
 new-feature NAME is shorthand for new-feature create NAME.
 
 Options: new-feature COMMAND --help
@@ -32,7 +32,7 @@ Examples:
   new-feature create my-feature --dry-run
 
 Use --no-agent inside an existing agent session. Work in the printed path.
-Run this command from the original checkout.
+Run from the original checkout or a managed feature worktree.
 """
 
 SETUP_DESCRIPTION = """\
@@ -44,7 +44,7 @@ or installing optional hooks.
 MERGE_DESCRIPTION = """\
 Check and merge a feature into its target branch. Requires clean feature and target checkouts.
 Failed checks stop the merge. The command pushes only when push = true.
-Run from the original checkout, then use teardown to remove the worktree.
+Run from the original checkout or a managed feature worktree, then use teardown.
 """
 
 TEARDOWN_DESCRIPTION = """\
@@ -52,17 +52,24 @@ Run cleanup, then remove the worktree and branch. Refuse dirty or unmerged work
 unless --force is supplied. Cleanup failure stops removal even with --force.
 Without a manifest entry, .worktrees/NAME can still be removed, but configured
 cleanup is skipped because its environment is unavailable.
-Run from the original checkout.
+Run from the original checkout or a managed feature worktree.
 """
 
 LIST_DESCRIPTION = """\
 Show managed features, their state, branches, and worktree paths.
-Run from the original checkout.
+Run from the original checkout or a managed feature worktree.
 """
 
 DOCTOR_DESCRIPTION = """\
 Find stale records, missing branches or worktrees, and configuration drift.
 Exit nonzero while issues remain. Repair never deletes unmerged work.
 Repair removes stale state; it does not recreate missing worktrees.
-Run from the original checkout.
+Run from the original checkout or a managed feature worktree.
+"""
+
+EXEC_DESCRIPTION = """\
+Run an executable with its arguments in a ready managed feature worktree.
+Restore the recorded environment, inherit standard streams, and return its exit status.
+No implicit shell; pass sh -c explicitly for shell syntax. Names normalize to exact slugs.
+Concurrent exec commands are allowed; lifecycle changes are refused until commands exit.
 """

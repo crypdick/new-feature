@@ -9,6 +9,7 @@ from new_feature.help_text import (
     CREATE_DESCRIPTION,
     CREATE_EPILOG,
     DOCTOR_DESCRIPTION,
+    EXEC_DESCRIPTION,
     LIST_DESCRIPTION,
     MERGE_DESCRIPTION,
     SETUP_DESCRIPTION,
@@ -20,6 +21,7 @@ _COMMANDS = frozenset({
     "create",
     "setup",
     "merge",
+    "exec",
     "teardown",
     "list",
     "status",
@@ -106,6 +108,19 @@ def build_parser() -> argparse.ArgumentParser:
     merge.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
     merge.set_defaults(command="merge")
 
+    execution = subparsers.add_parser(
+        "exec",
+        help="run a command in a feature's recorded environment",
+        description=EXEC_DESCRIPTION,
+        epilog="Example:\n  new-feature exec billing-webhooks -- uv run pytest",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    execution.add_argument("name", metavar="NAME", help="exact feature name or normalized slug")
+    execution.add_argument(
+        "argv", nargs=argparse.REMAINDER, metavar="COMMAND", help="executable and arguments"
+    )
+    execution.set_defaults(command="exec")
+
     teardown = subparsers.add_parser(
         "teardown",
         help="clean up and remove a feature worktree",
@@ -174,6 +189,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("feature name or subcommand is required")
     if args.command == "create" and args.no_agent and args.prompt is not None:
         parser.error("--prompt cannot be used with --no-agent")
+    if args.command == "exec" and not args.argv:
+        parser.error("exec requires a command after NAME --")
     return args
 
 
