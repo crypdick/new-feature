@@ -24,7 +24,7 @@ _COMMANDS = frozenset({
     "list",
     "status",
     "doctor",
-    # NOTE: docs/ARCHITECTURE.md retires native guards and installers; reject these names.
+    # Keep unsupported command names reserved so shorthand cannot create features with them.
     "codex-hook",
     "claude-hook",
     "install-rules",

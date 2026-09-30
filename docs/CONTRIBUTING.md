@@ -6,9 +6,9 @@ Install Python 3.13 or newer, Git, and uv, then install development dependencies
 uv sync --locked --all-groups
 ```
 
-Follow `CONVENTIONS.md`. Keep entry points thin, test public behavior, and use domain
-modules instead of catch-all files such as `utils.py`. See [Architecture](ARCHITECTURE.md)
-for the code layout and [Quality](QUALITY.md) for required checks.
+See `CONVENTIONS.md` for repository design principles,
+[Architecture](ARCHITECTURE.md) for the code layout, and [Quality](QUALITY.md)
+for required checks.
 
 ## Releases
 
@@ -17,23 +17,23 @@ release. CI preserves an unpublished manual version or increments the patch vers
 with `uv version`, updating `pyproject.toml` and `uv.lock` together. It commits the
 version, publishes to PyPI, and creates a GitHub release.
 
-Retries reuse the release commit. Superseded runs defer to the newer push, and bot
-version commits don't trigger another run. Pull requests run checks without publishing.
-Rerun the workflow manually to recover a partial release.
+Pull requests run checks without publishing. To recover a partial release, rerun
+the workflow manually.
 
-For a manual version bump, use `uv version --bump patch`, `minor`, or `major`.
+For a manual version bump, use `uv version --bump patch`. Replace `patch` with
+`minor` or `major` for those version increments.
 
 ## Documentation
 
-The site homepage comes from `README.md`. Edit it for usage, this guide for contribution,
-and package docstrings for the API reference. `scripts/generate_api_docs.py` copies README
-and conventions into the site and generates module pages and navigation.
-Don't edit generated files in `site/`.
+The site homepage comes from `README.md`. Edit `README.md` for usage instructions,
+this guide for contribution instructions, and package docstrings for the API reference.
+Edit `CONVENTIONS.md` for design principles. Don't edit generated files in `site/`.
+For site generation and navigation, edit `scripts/generate_api_docs.py`.
 
-Build before committing:
+Build the documentation site:
 
 ```bash
 uv run mkdocs build --strict
 ```
 
-Use `uv run mkdocs serve` for preview. Pushes to `main` deploy to GitHub Pages.
+Preview the site with `uv run mkdocs serve`. Pushes to `main` deploy to GitHub Pages.

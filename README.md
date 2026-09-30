@@ -5,14 +5,14 @@ Work on a feature, merge it, then remove its worktree and resources.
 
 ## Install
 
-Requires Python 3.13 or newer, Git, and uv:
+Install Python 3.13 or newer, Git, and uv, then install new-feature:
 
 ```bash
 uv tool install new-feature
 ```
 
-To have a coding agent configure your repository, install Codex or Claude Code on
-`PATH`, then run this from your checkout:
+To configure your repository with a coding agent, install Codex or Claude Code and
+make its executable available on `PATH`. From your checkout, start setup:
 
 ```bash
 new-feature setup --agent codex
@@ -36,18 +36,18 @@ new-feature teardown my-feature
 ```
 
 Run lifecycle commands from the original checkout. Use the feature worktree for edits
-and commits.
-For an existing coding agent, use the printed absolute worktree path for its tools.
+and commits. If you're already in a coding agent session, use the printed absolute
+worktree path for the agent's tools.
 
 To launch an agent in the worktree, use `new-feature my-feature --agent claude`.
 Without `--agent`, creation uses `default_agent` if configured. Use `--no-agent`
 to suppress it, including when you're already in an agent session.
 
-`new-feature NAME` is shorthand for `new-feature create NAME`. Names become branch
-and directory slugs. Use explicit `create` when the name matches a command, such as
-`new-feature create setup`.
+`new-feature NAME` is shorthand for `new-feature create NAME`. Replace `NAME` with
+your feature name. Names become branch and directory slugs. Use explicit `create`
+when the name matches a command, such as `new-feature create setup`.
 
-For inspection and command help:
+Inspect features, check their state, or get command help:
 
 ```bash
 new-feature list
@@ -97,13 +97,14 @@ Configuration loads in this order, with later sources overriding earlier ones:
 2. `.new-feature.toml`, or `[tool.new-feature]` in `pyproject.toml` if `.new-feature.toml` is absent.
 3. `.new-feature.local.toml`, which also works on its own.
 
-Local scalars and command lists replace shared values. Entries in `agents` and `env`
+Local values and command lists replace shared values. Entries in `agents` and `env`
 override by name. In `pyproject.toml`, use `[tool.new-feature.env]` instead of `[env]`.
 You can also put agent, pull, and push preferences in shared configuration as repository defaults.
 
-Defaults: target branch `main`, no agent, no pull or push, and no commands or allocations.
-Pull fast-forwards the clean target checkout using its upstream. Push sends the merged
-target branch to `origin`.
+By default, new-feature uses `main` as the target branch, launches no agent, skips
+pull and push, and runs no commands or allocations. With `pull_before_create = true`,
+it fast-forwards the clean target checkout using its upstream. With `push = true`,
+it pushes the merged target branch to `origin`.
 
 Codex and Claude have built-in aliases, which `agents` can add to or override.
 `--agent` accepts a configured name or an executable command, such as
@@ -111,7 +112,7 @@ Codex and Claude have built-in aliases, which `agents` can add to or override.
 The generated prompt is the final argument. Override it with `create_prompt` or
 `setup_prompt` in configuration, or `--prompt` for one invocation.
 
-Lifecycle commands are sequential shell strings. `setup`, `pre_merge`, and `teardown`
+Lifecycle commands run sequentially in a shell. `setup`, `pre_merge`, and `teardown`
 run in the feature worktree. `post_merge` runs in the original checkout before committing.
 A nonzero exit stops the operation.
 
@@ -124,65 +125,54 @@ Port reservations span all port variables in this repository. Availability check
 hold ports open or reserve them against other repositories or programs. Integer reservations
 are per variable. Without explicit bounds, ports use 1024-65535 and integers use 0-65535.
 
-Use `name` for a deterministic identifier with a hash suffix and optional `max_length`,
-or `slug` for `prefix-feature-slug`. Paths return `base/feature-slug` without creating
-directories. Relative paths resolve from the command's working directory.
+Use `name` for database identifiers, with `max_length` set to your database's identifier length limit.
+Use `slug` for readable namespaces in the form `prefix-feature-slug`. Paths return
+`base/feature-slug` without creating directories. Relative paths resolve from the
+command's working directory.
 
 ## Lifecycle
 
-Creation reuses an active feature's worktree and environment without rerunning setup.
-Without an agent, it prints a shell-quoted `cd` command. Setup failure triggers forced
-teardown. If cleanup fails or `doctor` reports `setup-incomplete`, preserve needed work,
-then tear down and recreate the feature. For a missing branch or worktree, run
-`new-feature doctor --repair` before retrying creation.
+Creating an active feature again reuses its worktree and environment without
+rerunning setup. If setup fails, new-feature attempts cleanup. If cleanup fails or
+`doctor` reports `setup-incomplete`, save needed work, then tear down and recreate
+the feature.
 
-Commit your feature changes before merging, and keep the target checkout clean.
-Merge checks for conflicts and runs your configured checks before committing.
-Features already included in the target history skip checks, including features merged
-outside this tool. Additional commits go through checks before merging. Failed merges
-attempt to restore the target revision and remove non-ignored untracked files created there.
-Rollback doesn't undo external effects such as database changes.
+The `new-feature merge NAME` command requires clean feature and target checkouts
+and refuses merge conflicts. Failed merges attempt to restore the target checkout
+and remove non-ignored untracked files created there. Rollback doesn't undo
+external effects such as database changes.
 
 Merge-check failures print a log path under `.new-feature/diagnostics/merge-failures/`.
-If push fails, rerun merge to retry. Commits added since the last merge go through checks first.
-A successful merge leaves the worktree in place: run teardown afterward, before
-creating another feature with the same name.
+If push fails, rerun merge to retry. Merge leaves the worktree in place. Run teardown
+afterward, before creating another feature with the same name.
 
-Teardown removes the worktree, branch, and manifest entry after cleanup commands succeed.
-A cleanup failure stops removal even with `--force`. Use `--force` only to discard
-uncommitted or unmerged work deliberately.
-If the manifest entry is missing, teardown can still remove `.worktrees/NAME`, but it
-skips configured cleanup because the recorded environment is unavailable.
+Teardown runs your cleanup commands, then removes the worktree and branch. If
+cleanup fails, removal stops even with `--force`. Use `--force` only to discard
+uncommitted or unmerged work deliberately. If the feature record is missing,
+teardown skips configured cleanup and can still remove the worktree.
 
-`patch-equivalent` means the target contains the feature's patches despite different
-ancestry. Teardown accepts these branches, except those with unmerged merge commits.
-Use `doctor --repair` to clean up stale records and branches whose worktrees are gone.
-Repair preserves unmerged work and unreadable worktrees. Doctor exits nonzero while
-issues remain. Repair doesn't recreate missing worktrees.
+Teardown accepts `patch-equivalent` branches, whose patches already exist in the
+target, except branches with unmerged merge commits.
 
-Setup and creation add `.new-feature/`, `.worktrees/`, and `*.local.toml` to Git's local
-`info/exclude`. These local ignore rules leave tracked `.gitignore` files unchanged.
+Use `new-feature doctor --repair` to clean up stale feature records and branches
+whose worktrees no longer exist. Repair preserves unmerged work and unreadable
+worktrees. It doesn't recreate missing worktrees. Doctor exits nonzero while issues remain.
+
+Setup and creation ignore `.new-feature/`, `.worktrees/`, and `*.local.toml` locally
+without changing your tracked `.gitignore` file.
 
 ## Agent guards
 
-Includes hooks that make coding copilots use `new-feature` instead of raw Git
-commands for worktree creation, removal, and merging into the target branch.
+Install optional hooks to keep coding agents on feature branches and require
+`new-feature` for worktree creation, removal, and merging into the target branch:
 
 ```bash
 new-feature install-rules           # tracked .i-insist/new-feature.toml
 new-feature install-rules --global  # ~/.i-insist/new-feature.toml
 ```
 
-Setup requires i-insist 0.4.0 or later and upgrades older runners. It atomically
-replaces new-feature's generated rule registration; installed rule files are not
-user customization files. Checkers own denial messages and return JSON `null` to
-allow or a nonempty string to block. Evaluation errors fail closed with stderr
-reported by i-insist. Human `I insist` approval remains available.
+The installer also sets up i-insist. Restart your coding agent and review `/hooks`
+after installation. Reinstalling replaces generated rule files, so leave them unmodified.
 
-This changes the checker protocol. Coordinate runner and provider upgrades, then
-rerun `install-rules` to replace old registrations, including tracked repository
-registrations. Old rule fields and boolean checker output fail closed.
-Only `install-rules` is supported. The old `install-codex-hook` and
-`install-claude-hook` aliases are removed. Setup does not interpret or migrate
-old native guard registrations; it delegates harness setup to i-insist.
-Restart your copilot and review `/hooks` after installation.
+If a guard blocks an action, follow its error message. To approve an override,
+include `I insist` in a human message.
