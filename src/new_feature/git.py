@@ -69,10 +69,36 @@ def pull_target(root: Path, *, target_branch: str) -> None:
     _git(root, "pull", "--ff-only", capture=True)
 
 
-def worktree_is_clean(worktree: Path) -> bool:
+def worktree_is_clean(worktree: Path, *, allow_untracked: bool = False) -> bool:
     """Return whether a worktree has no staged, unstaged, or untracked changes."""
-    result = _git(worktree, "status", "--porcelain", capture=True)
+    args = ("--untracked-files=no",) if allow_untracked else ()
+    result = _git(worktree, "status", "--porcelain", *args, capture=True)
     return not result.stdout.strip()
+
+
+def untracked_paths(worktree: Path, *, excludes: list[str]) -> tuple[Path, ...]:
+    """List untracked files, including ignored files, except explicit ignore patterns."""
+    arguments = [f"--exclude={pattern}" for pattern in excludes]
+    result = _git(worktree, "ls-files", "--others", "-z", *arguments, capture=True)
+    return tuple(Path(name) for name in result.stdout.split("\0") if name)
+
+
+def initialized_submodules(worktree: Path) -> tuple[Path, ...]:
+    """List initialized submodule directories from the worktree index."""
+    result = _git(worktree, "ls-files", "--stage", "-z", capture=True)
+    paths = []
+    for entry in result.stdout.split("\0"):
+        if entry.startswith("160000 "):
+            path = Path(entry.partition("\t")[2])
+            if (worktree / path / ".git").exists():
+                paths.append(path)
+    return tuple(paths)
+
+
+def branch_paths(root: Path, branch: str) -> set[Path]:
+    """Return tracked paths at a branch tip, including submodule roots."""
+    result = _git(root, "ls-tree", "-r", "--name-only", "-z", branch, capture=True)
+    return {Path(name) for name in result.stdout.split("\0") if name}
 
 
 def worktree_branch(worktree: Path) -> str | None:
@@ -166,6 +192,7 @@ def merge_feature_branch(
     if not git_args:
         ensure_merge_is_clean(root, branch=branch, target_branch=target_branch)
         git_args = ("--no-commit", "--no-ff")
+    _ensure_incoming_paths_safe(root, branch=branch, target_branch=target_branch)
     _git(root, "merge", *git_args, branch)
 
 
@@ -263,3 +290,32 @@ def git_environment() -> dict[str, str]:
     ):
         env.pop(key, None)
     return env
+
+
+def _ensure_incoming_paths_safe(root: Path, *, branch: str, target_branch: str) -> None:
+    # NOTE: README.md documents collision checks that protect ignored target files.
+    tracked_target = branch_paths(root, target_branch)
+    for relative in branch_paths(root, branch) - tracked_target:
+        destination = root / relative
+        if destination.is_dir() and not destination.is_symlink():
+            collision = bool(
+                _git(
+                    root,
+                    "--literal-pathspecs",
+                    "ls-files",
+                    "--others",
+                    "-z",
+                    "--",
+                    str(relative),
+                    capture=True,
+                ).stdout
+            )
+        else:
+            collision = destination.exists()
+        if collision or any(
+            (root / part).is_symlink()
+            or (part != relative and (root / part).exists() and not (root / part).is_dir())
+            for part in (relative, *relative.parents[:-1])
+            if part not in tracked_target
+        ):
+            raise NewFeatureError(f"git merge would overwrite an existing local path: {relative}")

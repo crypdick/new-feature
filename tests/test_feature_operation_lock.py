@@ -40,7 +40,7 @@ def test_concurrent_same_feature_merge_and_teardown_fail_fast(
     monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
     monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
     monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
-    monkeypatch.setattr(cli, "_merge_target", lambda _root, _config, _key, current, **_kwargs: current)
+    monkeypatch.setattr(cli, "_merge_target", lambda _root, _config, current, **_kwargs: current)
 
     def run_commands(_commands, *, cwd, env, failure_log=None):
         del cwd, env, failure_log

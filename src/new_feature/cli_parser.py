@@ -105,6 +105,11 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="Example:\n  new-feature merge billing-webhooks",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    merge.add_argument(
+        "--include-untracked",
+        action="store_true",
+        help="copy local files, including ignored files, into target checkout",
+    )
     merge.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
     merge.add_argument(
         "git_args",
@@ -207,6 +212,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.command is None:
         parser.error("feature name or subcommand is required")
+    if args.command == "merge":
+        boundary = args.git_args.index("--") if "--" in args.git_args else len(args.git_args)
+        own_arguments = args.git_args[:boundary]
+        args.include_untracked |= "--include-untracked" in own_arguments
+        args.git_args = [value for value in own_arguments if value != "--include-untracked"] + args.git_args[
+            boundary:
+        ]
     if args.command == "create" and args.no_agent and args.prompt is not None:
         parser.error("--prompt cannot be used with --no-agent")
     if args.command == "exec" and not args.argv:

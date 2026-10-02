@@ -61,7 +61,7 @@ def test_teardown_preview_reports_all_refusals(tmp_path: Path, monkeypatch, caps
     capsys.readouterr()
     assert main(["teardown", "feature", "--dry-run"]) == 1
     output = capsys.readouterr().out
-    assert "uncommitted changes" in output
+    assert "unpreserved untracked or ignored files" in output
     assert "unmerged commits" in output
     assert worktree.exists()
     assert main(["teardown", "feature", "--dry-run", "--force"]) == 0
@@ -149,3 +149,60 @@ def test_cleanup_child_blocks_removal_after_successful_cleanup(tmp_path: Path, m
     finally:
         if (tmp_path / "child.pid").exists():
             os.kill(int((tmp_path / "child.pid").read_text(encoding="utf-8")), signal.SIGTERM)
+
+
+def test_ignored_files_survive_merge_and_block_teardown(tmp_path: Path, monkeypatch, capsys):
+    init_git_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("drafts/\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "Ignore local drafts"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+    assert main(["feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees/feature"
+    draft = worktree / "drafts/local note.md"
+    draft.parent.mkdir()
+    draft.write_text("valuable local work", encoding="utf-8")
+    (worktree / "README.md").write_text("feature change\n", encoding="utf-8")
+    subprocess.run(["git", "commit", "-am", "Feature change"], cwd=worktree, check=True)
+    assert main(["merge", "feature"]) == 0
+    assert draft.read_text() == "valuable local work"
+    assert not (tmp_path / "drafts/local note.md").exists()
+    capsys.readouterr()
+    assert main(["teardown", "feature", "--dry-run"]) == 1
+    assert "ignored files" in capsys.readouterr().out
+    assert main(["teardown", "feature"]) == 1
+    assert "ignored files" in capsys.readouterr().err
+    assert draft.read_text() == "valuable local work"
+    assert load_manifest(tmp_path).features
+    assert main(["teardown", "feature", "--force"]) == 0
+    assert not worktree.exists()
+
+
+def test_teardown_retains_ignored_files_created_by_cleanup(tmp_path: Path, monkeypatch, capsys):
+    init_git_repo(tmp_path, '[tool.new-feature]\nteardown=["mkdir -p drafts; echo keep > drafts/note"]\n')
+    (tmp_path / ".gitignore").write_text("drafts/\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".gitignore"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "Ignore drafts"], cwd=tmp_path, check=True)
+    monkeypatch.chdir(tmp_path)
+    assert main(["feature", "--no-agent"]) == 0
+    assert main(["teardown", "feature"]) == 1
+    assert "ignored files" in capsys.readouterr().err
+    assert (tmp_path / ".worktrees/feature/drafts/note").read_text() == "keep\n"
+
+
+def test_teardown_rechecks_tracked_changes_after_cleanup(tmp_path: Path, monkeypatch, capsys):
+    init_git_repo(tmp_path, '[tool.new-feature]\nteardown=["echo changed >> pyproject.toml"]\n')
+    monkeypatch.chdir(tmp_path)
+    assert main(["feature", "--no-agent"]) == 0
+    assert main(["teardown", "feature"]) == 1
+    assert "uncommitted tracked changes" in capsys.readouterr().err
+    assert (tmp_path / ".worktrees/feature/pyproject.toml").exists()
+
+
+def test_teardown_preview_reports_tracked_changes(tmp_path: Path, monkeypatch, capsys):
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert main(["feature", "--no-agent"]) == 0
+    (tmp_path / ".worktrees/feature/README.md").write_text("dirty", encoding="utf-8")
+    assert main(["teardown", "feature", "--dry-run"]) == 1
+    assert "uncommitted changes" in capsys.readouterr().out

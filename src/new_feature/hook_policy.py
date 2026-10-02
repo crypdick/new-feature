@@ -65,7 +65,7 @@ def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
     for target in targets:
         context = _git_context_for(target, cwd=cwd)
         if context is not None and context.branch == context.target_branch:
-            if _is_ignored_root_sidecar(target, cwd=cwd, root=context.root):
+            if _is_ignored_untracked_path(target, cwd=cwd, root=context.root):
                 continue
             return True
     return False
@@ -216,13 +216,16 @@ def _git_context_for(path: Path, *, cwd: Path, git_options: tuple[str, ...] = ()
     )
 
 
-def _is_ignored_root_sidecar(path: Path, *, cwd: Path, root: Path) -> bool:
-    # NOTE: docs/ARCHITECTURE.md permits only the ignored, untracked root configuration file.
+def _is_ignored_untracked_path(path: Path, *, cwd: Path, root: Path) -> bool:
+    # NOTE: docs/ARCHITECTURE.md permits ignored, untracked paths on the target branch.
     target = path.expanduser()
     if not target.is_absolute():
         target = cwd / target
-    name = ".new-feature.local.toml"
-    return target.resolve() == root / name and _git_output(root, "check-ignore", "--", name) == name
+    try:
+        relative = target.resolve().relative_to(root)
+    except ValueError:
+        return False
+    return _git_output(root, "check-ignore", "--quiet", "--", str(relative)) is not None
 
 
 def _existing_probe_path(path: Path, *, cwd: Path) -> Path:

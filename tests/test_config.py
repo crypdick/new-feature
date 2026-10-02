@@ -200,3 +200,14 @@ def test_local_config_cannot_mask_an_invalid_shared_setting(tmp_path: Path):
 
     with pytest.raises(NewFeatureError, match=r"tool\.new-feature\.push must be a boolean"):
         load_project_config(tmp_path)
+
+
+@pytest.mark.parametrize("pattern", ["!keep", "\x00invalid"])
+def test_safe_to_delete_rejects_unsafe_patterns(tmp_path, pattern):
+    from new_feature.config import load_project_config
+    from new_feature.errors import NewFeatureError
+
+    encoded = '"!keep"' if pattern == "!keep" else '"\\u0000invalid"'
+    (tmp_path / ".new-feature.toml").write_text(f"safe_to_delete=[{encoded}]\n", encoding="utf-8")
+    with pytest.raises(NewFeatureError, match="cannot contain negation or NUL"):
+        load_project_config(tmp_path)
