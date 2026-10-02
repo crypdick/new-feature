@@ -15,6 +15,7 @@ from new_feature.inspection import warn_if_config_changed
 from new_feature.manifest import FeatureRecord, load_manifest, manifest_lock, save_manifest
 from new_feature.processes import require_no_worktree_processes
 from new_feature.slug import feature_key, slugify
+from new_feature.untracked import require_local_files_preserved
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,7 @@ def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> in
     """Preview or remove a feature, retaining resources when cleanup fails."""
     config = load_project_config(root)
     target = _resolve_target(root, name, config)
-    refusals = [] if force else _refusals(root, target)
+    refusals = [] if force else _refusals(root, target, config)
     if dry_run:
         # NOTE: README.md documents lock-free preview, refusal exits, and cleanup uncertainty.
         _preview(target, config, refusals, force=force)
@@ -47,11 +48,18 @@ def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> in
     if not force:
         # NOTE: README.md documents process checks before cleanup and immediately before removal.
         require_no_worktree_processes(target.worktree)
+        if not worktree_is_clean(target.worktree, allow_untracked=True):
+            raise NewFeatureError(
+                "feature worktree has uncommitted tracked changes; pass --force to abandon them"
+            )
+        require_local_files_preserved(root, target.worktree, config.safe_to_delete)
     remove_worktree_and_branch(
         root,
         branch=target.branch,
         worktree=target.worktree,
-        force=force,
+        # Git refuses ordinary untracked files even after their copies are verified.
+        # NOTE: README.md documents safe deletion of preserved local files and excluded artifacts.
+        force=True,
         force_branch=not force,
     )
     if target.record is not None:
@@ -84,9 +92,9 @@ def _resolve_target(root: Path, name: str, config: ProjectConfig) -> TeardownTar
     return TeardownTarget(key, worktree, branch, target_branch, record)
 
 
-def _refusals(root: Path, target: TeardownTarget) -> list[str]:
+def _refusals(root: Path, target: TeardownTarget, config: ProjectConfig) -> list[str]:
     refusals: list[str] = []
-    if not worktree_is_clean(target.worktree):
+    if not worktree_is_clean(target.worktree, allow_untracked=True):
         refusals.append("feature worktree has uncommitted changes; pass --force to abandon them")
     if target.branch is None:
         refusals.append("unmanaged worktree is detached; pass --force to abandon it")
@@ -95,6 +103,10 @@ def _refusals(root: Path, target: TeardownTarget) -> list[str]:
         is IntegrationState.UNMERGED
     ):
         refusals.append("feature branch has unmerged commits; pass --force to abandon them")
+    try:
+        require_local_files_preserved(root, target.worktree, config.safe_to_delete)
+    except NewFeatureError as exc:
+        refusals.append(str(exc))
     try:
         require_no_worktree_processes(target.worktree)
     except NewFeatureError as exc:

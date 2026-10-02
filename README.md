@@ -148,7 +148,9 @@ rerunning setup. If setup fails, new-feature attempts cleanup. If cleanup fails 
 the feature.
 
 The `new-feature merge NAME` command requires clean feature and target checkouts
-and refuses merge conflicts. Failed merges attempt to restore the target checkout
+and refuses merge conflicts. Incoming tracked paths are checked for collisions with existing local paths,
+including ignored files in the target checkout. `--include-untracked` permits local files in the feature
+worktree while still requiring committed changes to tracked files. Failed merges attempt to restore the target checkout
 and remove non-ignored untracked files created there. Rollback doesn't undo
 external effects such as database changes.
 
@@ -164,7 +166,10 @@ afterward, before creating another feature with the same name.
 
 Teardown runs your cleanup commands, then removes the worktree and branch. If
 cleanup fails, removal stops even with `--force`. Use `--force` only to discard
-uncommitted or unmerged work deliberately, or bypass process protection. If the
+uncommitted or unmerged work deliberately, or bypass process protection. Normal
+teardown refuses local files without identical copies in the original checkout,
+except paths designated safe to delete. Checks run before cleanup and immediately
+before removal; configured cleanup commands remain responsible for their own effects. If the
 feature record is missing, teardown skips configured cleanup and can still remove the worktree.
 
 Use `new-feature teardown NAME --dry-run` to preview the absolute worktree path,
@@ -218,10 +223,63 @@ instead of parsing human `state` or messages.
 Setup and creation ignore `.new-feature/`, `.worktrees/`, and `*.local.toml` locally
 without changing your tracked `.gitignore` file.
 
+## Local file transfer
+
+Use an explicit flag to preserve local work alongside a Git merge:
+
+```bash
+new-feature merge my-feature --include-untracked
+new-feature teardown my-feature
+```
+
+The flag copies ordinary untracked files and Git-ignored files to the same relative
+paths in the original checkout. It never stages or commits them. Originals remain
+in the feature worktree until teardown. Existing destination files must have identical
+contents and permission bits; differing files, tracked paths, symlinks, and nested
+repositories stop transfer. Initialized submodules are checked for local files;
+transfer into tracked submodule paths is refused.
+
+File conflicts are checked before merging. Copies happen after successful merge
+checks and the Git commit, before an optional push. If copying fails, the Git merge
+stays completed, originals and completed copies remain, and rerunning the command
+retries missing copies. The flag also works when the branch is already merged.
+Without the flag, merge does not transfer local files. As usual, a new Git merge
+requires a clean target checkout; ordinary untracked copies there may need to be
+ignored, committed, or moved before merging further commits.
+
+Teardown removes local files only when identical regular-file copies exist in the
+original checkout, or their paths are explicitly disposable. It verifies contents
+and permissions again after cleanup commands. `--dry-run` reports refusals;
+`--force` deliberately discards unpreserved files. Excluded files are disposable
+whether or not `--include-untracked` was used.
+
+Configure extra disposable paths in `.new-feature.toml`, `.new-feature.local.toml`,
+or `[tool.new-feature]` in `pyproject.toml`:
+
+```toml
+safe_to_delete = ["scratch/", "*.log", "/temporary-output/"]
+```
+
+Patterns use Git ignore syntax. A trailing `/` matches directories, a leading `/`
+anchors to the checkout root, and patterns without slashes match at any depth.
+Negation (`!`) is not supported. Patterns also apply within each initialized
+submodule. Local configuration replaces the shared list; built-in exclusions always
+apply. Matching files are excluded from transfer and may be deleted by normal
+teardown, so list only disposable paths.
+
+Built-in disposable paths are `.new-feature/`, `.worktrees/`, `__pycache__/`,
+`.venv/`, `venv/`, `node_modules/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`,
+`.cache/`, `build/`, `dist/`, `site/`, `*.egg-info/`, and `htmlcov/`. Built-in file
+patterns are `*.pyc`, `*.pyo`, `.coverage`, `.coverage.*`, `*.tmp`, `*.swp`, and `*~`.
+
+Local file checks are best effort; stop writers before transfer or teardown.
+
 ## Agent guards
 
 Install optional hooks to keep coding agents on feature branches and require
-`new-feature` for worktree creation, removal, and merging into the target branch:
+`new-feature` for worktree creation, removal, and merging into the target branch.
+Ignored, untracked files can be edited directly on the target branch; tracked files
+remain protected even inside ignored directories.
 
 ```bash
 new-feature install-rules           # tracked .i-insist/new-feature.toml

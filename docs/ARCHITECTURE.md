@@ -6,6 +6,7 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 - `cli.py`: lifecycle dispatch, creation, and merge workflows.
 - `inspection.py`: human and versioned JSON inspection and repair reports.
 - `teardown.py` and `processes.py`: teardown preview and Linux process protection.
+- `untracked.py`: local file transfer, disposable patterns, and preservation checks.
 - `config.py` and `allocator.py`: configuration and environment allocation.
 - `manifest.py`: feature records and locks.
 - `git.py`, `commands.py`, and `execution.py`: Git, shell commands, and feature execution.
@@ -49,13 +50,26 @@ Git commands, lifecycle commands, and agents ignore inherited Git repository-loc
 overrides. Their working directory selects the repository. Transport, authentication,
 and explicitly configured lifecycle environment values remain available.
 
+## Local files
+
+Local files stay outside Git's merge transaction. `merge --include-untracked`
+validates destination conflicts before the Git merge, then makes atomic copies
+without overwriting after the commit succeeds. Originals remain until teardown;
+partial transfer can be retried against identical completed copies. A transfer
+failure does not roll back the completed Git merge. Normal teardown checks tracked
+changes, branch integration, processes, and preservation of non-disposable local
+files before requesting forced Git worktree removal. Preservation is rechecked
+after cleanup; this prevents Git's disregard for ignored files from losing work.
+See [Local file transfer](https://new-feature.ricardodecal.com/#local-file-transfer) for policy and exclusions.
+
 ## Agent guards
 
 Guards enforce these policies through i-insist:
 
 - Create and remove worktrees through `new-feature`.
-- Edit on a feature branch, except before the first commit or when editing the
-  ignored, untracked root `.new-feature.local.toml` file.
+- Edit on a feature branch, except before the first commit or when editing
+  ignored, untracked paths. Tracked files remain protected even under ignored
+  directories; symlinks are checked against their resolved destinations.
 - Merge into the target branch through `new-feature merge`. Merges on feature
   branches, `--continue`, `--abort`, `--quit`, help, and `git commit` remain allowed.
 - Arguments after the feature name pass through to `git merge`; supplying them skips

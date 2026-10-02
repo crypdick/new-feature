@@ -20,6 +20,7 @@ from new_feature.feature_state import (
     reusable_feature_worktree,
 )
 from new_feature.git import (
+    branch_paths,
     checkout_target,
     commit_merge,
     create_worktree,
@@ -50,6 +51,7 @@ from new_feature.manifest import (
 from new_feature.rule_checker import main as check_rule
 from new_feature.slug import feature_key, slugify
 from new_feature.teardown import teardown
+from new_feature.untracked import copy_local_files, local_paths, validate_local_paths
 from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
 
 
@@ -106,7 +108,9 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         preview = args.command == "teardown" and args.dry_run
         with nullcontext() if preview else feature_operation_lock(root, slugify(args.name)):
             return (
-                _merge(root, args.name, git_args=tuple(args.git_args))
+                _merge(
+                    root, args.name, git_args=tuple(args.git_args), include_untracked=args.include_untracked
+                )
                 if args.command == "merge"
                 else teardown(root, args.name, force=args.force, dry_run=args.dry_run)
             )
@@ -293,21 +297,28 @@ def _commit_feature_merge(
 def _merge_target(
     root: Path,
     config: ProjectConfig,
-    key: str,
     record: FeatureRecord,
     *,
     git_args: tuple[str, ...],
+    local_files: tuple[Path, ...] | None = None,
 ) -> FeatureRecord:
     with target_merge_lock(root):
         if not worktree_is_clean(root):
             raise NewFeatureError(
                 "target checkout has uncommitted changes; commit or stash them before merging"
             )
+        tracked = (
+            set()
+            if local_files is None
+            else branch_paths(root, record.target_branch) | branch_paths(root, record.branch)
+        )
+        if local_files is not None:
+            validate_local_paths(root, root / record.worktree, local_files, tracked)
         # NOTE: docs/ARCHITECTURE.md requires target selection before rollback ownership.
         checkout_target(root, target_branch=record.target_branch)
         target_revision = resolve_revision(root, "HEAD")
         try:
-            record = _commit_feature_merge(root, config, key, record, git_args=git_args)
+            record = _commit_feature_merge(root, config, feature_key(record.slug), record, git_args=git_args)
         except BaseException as merge_error:
             try:
                 rollback_merge(root, revision=target_revision)
@@ -316,12 +327,16 @@ def _merge_target(
                     f"merge failed and the target checkout could not be restored: {rollback_error}"
                 ) from merge_error
             raise
+        if local_files is not None:
+            copy_local_files(
+                root, root / record.worktree, local_files, branch_paths(root, record.target_branch)
+            )
         if config.push:
             push_target(root, target_branch=record.target_branch)
         return record
 
 
-def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = ()) -> int:
+def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = (), include_untracked: bool = False) -> int:
     config = load_project_config(root)
     key = feature_key(slugify(name))
     with manifest_lock(root):
@@ -332,11 +347,20 @@ def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = ()) -> int:
     require_setup_complete(record)
     warn_if_config_changed(config, record)
     worktree = root / record.worktree
-    if not worktree_is_clean(worktree):
-        raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
+    _require_feature_clean(worktree, include_untracked=include_untracked)
     with target_merge_lock(root):
         # NOTE: docs/ARCHITECTURE.md documents Git-derived integration; README.md covers push retries.
         if is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
+            if include_untracked:
+                if not worktree_is_clean(root, allow_untracked=True):
+                    raise NewFeatureError(
+                        "target checkout has uncommitted tracked changes; commit or stash them before merging"
+                    )
+                paths = local_paths(worktree, config.safe_to_delete)
+                tracked = branch_paths(root, record.target_branch)
+                validate_local_paths(root, worktree, paths, tracked)
+                checkout_target(root, target_branch=record.target_branch)
+                copy_local_files(root, worktree, paths, tracked)
             if record.status != "merged":
                 _record_status(root, key, status="merged")
             if config.push:
@@ -354,8 +378,18 @@ def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = ()) -> int:
         env=record.env,
         failure_log=merge_failure_log(root, record.slug, phase="pre-merge"),
     )
-    if not worktree_is_clean(worktree):
-        raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")
-    record = _merge_target(root, config, key, record, git_args=git_args)
+    _require_feature_clean(worktree, include_untracked=include_untracked)
+    local_files = local_paths(worktree, config.safe_to_delete) if include_untracked else None
+    record = _merge_target(root, config, record, git_args=git_args, local_files=local_files)
     print(build_teardown_reminder(record.slug))
     return 0
+
+
+def _require_feature_clean(worktree: Path, *, include_untracked: bool) -> None:
+    clean = (
+        worktree_is_clean(worktree, allow_untracked=True)
+        if include_untracked
+        else worktree_is_clean(worktree)
+    )
+    if not clean:
+        raise NewFeatureError("feature worktree has uncommitted changes; commit them before merging")

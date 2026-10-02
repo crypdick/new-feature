@@ -43,6 +43,8 @@ or installing optional hooks.
 
 MERGE_DESCRIPTION = """\
 Check and merge a feature into its target branch. Requires clean feature and target checkouts.
+--include-untracked copies local files, including ignored files, without committing them.
+Built-in temporary paths and safe_to_delete patterns are excluded.
 Failed checks stop the merge. The command pushes only when push = true.
 Run from the original checkout or a managed feature worktree, then use teardown.
 """
@@ -50,6 +52,8 @@ Run from the original checkout or a managed feature worktree, then use teardown.
 TEARDOWN_DESCRIPTION = """\
 Run cleanup, then remove the worktree and branch. Refuse dirty or unmerged work
 and same-user processes inside the worktree unless --force is supplied.
+Local files need identical target copies unless covered by built-in temporary
+patterns or safe_to_delete. Unpreserved local files stop normal removal.
 Use --dry-run to preview cleanup, removal, and refusals without changing resources. Cleanup failure stops removal even with --force.
 Without a manifest entry, .worktrees/NAME can still be removed, but configured
 cleanup is skipped because its environment is unavailable.

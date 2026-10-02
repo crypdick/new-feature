@@ -37,7 +37,7 @@ def test_policy_allows_bootstrap_until_the_first_commit(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("relative", [False, True])
-def test_policy_allows_only_the_ignored_root_sidecar(tmp_path: Path, relative: bool) -> None:
+def test_policy_allows_ignored_untracked_sidecars(tmp_path: Path, relative: bool) -> None:
     from tests.conftest import init_git_repo
 
     init_git_repo(tmp_path)
@@ -48,7 +48,7 @@ def test_policy_allows_only_the_ignored_root_sidecar(tmp_path: Path, relative: b
     assert not blocked((target,), cwd=tmp_path)
     assert blocked((target, tmp_path / "README.md"), cwd=tmp_path)
     nested = tmp_path / "nested/.new-feature.local.toml"
-    assert blocked((nested,), cwd=tmp_path)
+    assert not blocked((nested,), cwd=tmp_path)
     sidecar.write_text("push = false\n", encoding="utf-8")
     subprocess.run(["git", "add", "--force", sidecar.name], cwd=tmp_path, check=True)
     assert blocked((target,), cwd=tmp_path)
@@ -65,3 +65,40 @@ def test_policy_rejects_a_sidecar_symlink_to_tracked_source(tmp_path: Path) -> N
     sidecar = tmp_path / ".new-feature.local.toml"
     sidecar.symlink_to(source)
     assert blocked((sidecar,), cwd=tmp_path)
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_policy_allows_files_in_ignored_directories(tmp_path: Path, relative: bool) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("drafts/\n", encoding="utf-8")
+    draft = tmp_path / "drafts/nested/new note.md"
+    target = draft.relative_to(tmp_path) if relative else draft
+    assert not blocked((target,), cwd=tmp_path)
+    draft.parent.mkdir(parents=True)
+    draft.write_text("local work", encoding="utf-8")
+    assert not blocked((target,), cwd=tmp_path)
+    assert blocked((target, tmp_path / "README.md"), cwd=tmp_path)
+    subprocess.run(["git", "add", "--force", str(draft)], cwd=tmp_path, check=True)
+    assert blocked((target,), cwd=tmp_path)
+
+
+def test_policy_rejects_ignored_directory_symlink_to_tracked_source(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("drafts/\n", encoding="utf-8")
+    (tmp_path / "drafts").symlink_to(tmp_path, target_is_directory=True)
+    assert blocked((tmp_path / "drafts/README.md",), cwd=tmp_path)
+
+
+def test_policy_rejects_ignored_symlink_outside_repository(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    project = tmp_path / "project"
+    project.mkdir()
+    init_git_repo(project)
+    (project / ".gitignore").write_text("drafts\n", encoding="utf-8")
+    (project / "drafts").symlink_to(tmp_path / "external-file")
+    assert blocked((project / "drafts",), cwd=project)

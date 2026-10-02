@@ -28,6 +28,7 @@ _CONFIG_KEYS = {
     "pre_merge",
     "post_merge",
     "teardown",
+    "safe_to_delete",
     "env",
 }
 _ALLOCATOR_KEYS = {
@@ -112,6 +113,7 @@ class ProjectConfig:
     pre_merge: list[str] = field(default_factory=list)
     post_merge: list[str] = field(default_factory=list)
     teardown: list[str] = field(default_factory=list)
+    safe_to_delete: list[str] = field(default_factory=list)
     env: dict[str, EnvSpec] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -141,6 +143,12 @@ class _Parser:
         if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
             raise NewFeatureError(f"{self.config_path}.{name} must be a list of non-empty strings")
         return list(value)
+
+    def deletion_patterns(self) -> list[str]:
+        patterns = self.string_list("safe_to_delete")
+        if any(pattern.startswith("!") or "\0" in pattern for pattern in patterns):
+            raise NewFeatureError(f"{self.config_path}.safe_to_delete cannot contain negation or NUL")
+        return patterns
 
     def optional_string(self, name: str) -> str | None:
         value = self.raw.get(name)
@@ -288,6 +296,7 @@ def config_fingerprint(config: ProjectConfig) -> str:
         "pre_merge": config.pre_merge,
         "post_merge": config.post_merge,
         "teardown": config.teardown,
+        "safe_to_delete": config.safe_to_delete,
         "env": {key: _env_fingerprint(value) for key, value in sorted(config.env.items())},
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -419,5 +428,6 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
         pre_merge=parser.string_list("pre_merge"),
         post_merge=parser.string_list("post_merge"),
         teardown=parser.string_list("teardown"),
+        safe_to_delete=parser.deletion_patterns(),
         env=env,
     )
