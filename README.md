@@ -89,6 +89,7 @@ Keep personal preferences in the ignored `.new-feature.local.toml`:
 default_agent = "codex"
 pull_before_create = true
 push = true
+auto-teardown = true
 agents = { custom = ["custom-agent", "--prompt"] }
 ```
 
@@ -101,12 +102,14 @@ Configuration loads in this order, with later sources overriding earlier ones:
 
 Local values and command lists replace shared values. Entries in `agents` and `env`
 override by name. In `pyproject.toml`, use `[tool.new-feature.env]` instead of `[env]`.
-You can also put agent, pull, and push preferences in shared configuration as repository defaults.
+You can also put agent, pull, push, and automatic teardown preferences in shared configuration as repository defaults.
 
 By default, new-feature uses `main` as the target branch, launches no agent, skips
 pull and push, and runs no commands or allocations. With `pull_before_create = true`,
 it fast-forwards the clean target checkout using its upstream. With `push = true`,
-it pushes the merged target branch to `origin`.
+it pushes the merged target branch to `origin`. With `auto-teardown = true`, it runs
+teardown after a successful merge, local file transfer, and any configured push.
+Automatic teardown defaults to false.
 
 Codex and Claude have built-in aliases, which `agents` can add to or override.
 `--agent` accepts a configured name or an executable command, such as
@@ -161,8 +164,16 @@ Git's merge options control conflict handling. Git may commit or fast-forward
 before post-merge checks; failed merges or checks still attempt rollback.
 
 Merge-check failures print a log path under `.new-feature/diagnostics/merge-failures/`.
-If push fails, rerun merge to retry. Merge leaves the worktree in place. Run teardown
-afterward, before creating another feature with the same name.
+If push fails, rerun merge to retry. By default, merge leaves the worktree in place.
+Run teardown afterward, before creating another feature with the same name.
+
+With `auto-teardown = true`, merge runs normal teardown automatically, including
+for an already-merged feature. Failed merge checks, local file transfer, or push
+skip teardown. Teardown failure returns nonzero and leaves the completed merge
+intact; resolve the reported issue, then rerun merge or run teardown directly.
+Automatic teardown uses the same safety checks as manual teardown and never
+uses `--force`. Run merge from the original checkout and stop processes in the
+feature worktree first; processes with working directories inside it block removal.
 
 Teardown runs your cleanup commands, then removes the worktree and branch. If
 cleanup fails, removal stops even with `--force`. Use `--force` only to discard

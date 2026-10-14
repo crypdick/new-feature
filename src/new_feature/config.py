@@ -24,6 +24,7 @@ _CONFIG_KEYS = {
     "setup_prompt",
     "pull_before_create",
     "push",
+    "auto-teardown",
     "setup",
     "pre_merge",
     "post_merge",
@@ -109,6 +110,7 @@ class ProjectConfig:
     setup_prompt: str | None = None
     pull_before_create: bool = False
     push: bool = False
+    auto_teardown: bool = False
     setup: list[str] = field(default_factory=list)
     pre_merge: list[str] = field(default_factory=list)
     post_merge: list[str] = field(default_factory=list)
@@ -292,6 +294,7 @@ def config_fingerprint(config: ProjectConfig) -> str:
         "setup_prompt": config.setup_prompt,
         "pull_before_create": config.pull_before_create,
         "push": config.push,
+        "auto-teardown": config.auto_teardown,
         "setup": config.setup,
         "pre_merge": config.pre_merge,
         "post_merge": config.post_merge,
@@ -424,6 +427,7 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
         setup_prompt=parser.optional_string("setup_prompt"),
         pull_before_create=parser.boolean("pull_before_create", default=False),
         push=parser.boolean("push", default=False),
+        auto_teardown=parser.boolean("auto-teardown", default=False),
         setup=parser.string_list("setup"),
         pre_merge=parser.string_list("pre_merge"),
         post_merge=parser.string_list("post_merge"),

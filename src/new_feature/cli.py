@@ -350,7 +350,8 @@ def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = (), include_unt
     _require_feature_clean(worktree, include_untracked=include_untracked)
     with target_merge_lock(root):
         # NOTE: docs/ARCHITECTURE.md documents Git-derived integration; README.md covers push retries.
-        if is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
+        already_merged = is_branch_merged(root, branch=record.branch, target_branch=record.target_branch)
+        if already_merged:
             if include_untracked:
                 if not worktree_is_clean(root, allow_untracked=True):
                     raise NewFeatureError(
@@ -365,8 +366,8 @@ def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = (), include_unt
                 _record_status(root, key, status="merged")
             if config.push:
                 push_target(root, target_branch=record.target_branch)
-            print(build_teardown_reminder(record.slug))
-            return 0
+    if already_merged:
+        return _finish_merge(root, config, record)
     if not git_args:
         ensure_merge_is_clean(root, branch=record.branch, target_branch=record.target_branch)
     if config.pre_merge:
@@ -381,8 +382,19 @@ def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = (), include_unt
     _require_feature_clean(worktree, include_untracked=include_untracked)
     local_files = local_paths(worktree, config.safe_to_delete) if include_untracked else None
     record = _merge_target(root, config, record, git_args=git_args, local_files=local_files)
-    print(build_teardown_reminder(record.slug))
-    return 0
+    return _finish_merge(root, config, record)
+
+
+def _finish_merge(root: Path, config: ProjectConfig, record: FeatureRecord) -> int:
+    # NOTE: README.md documents optional teardown after merge, local file transfer, and push.
+    if not config.auto_teardown:
+        print(build_teardown_reminder(record.slug))
+        return 0
+    print("Feature merged. Running automatic teardown.", flush=True)
+    try:
+        return teardown(root, record.slug, force=False)
+    except NewFeatureError as exc:
+        raise NewFeatureError(f"merge succeeded but auto-teardown failed: {exc}") from exc
 
 
 def _require_feature_clean(worktree: Path, *, include_untracked: bool) -> None:

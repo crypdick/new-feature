@@ -46,7 +46,10 @@ Check and merge a feature into its target branch. Requires clean feature and tar
 --include-untracked copies local files, including ignored files, without committing them.
 Built-in temporary paths and safe_to_delete patterns are excluded.
 Failed checks stop the merge. The command pushes only when push = true.
-Run from the original checkout or a managed feature worktree, then use teardown.
+With auto-teardown = true, success runs normal teardown after any push.
+Teardown failure leaves the merge intact and returns nonzero.
+Run from the original checkout or a managed feature worktree. Automatic teardown
+refuses processes inside the feature worktree; otherwise, use teardown afterward.
 """
 
 TEARDOWN_DESCRIPTION = """\
