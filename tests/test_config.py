@@ -4,7 +4,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from new_feature.config import LiteralEnvSpec, SlugEnvSpec, load_project_config
+from new_feature.config import (
+    LiteralEnvSpec,
+    ProjectConfig,
+    SlugEnvSpec,
+    config_fingerprint,
+    load_project_config,
+)
 from new_feature.errors import NewFeatureError
 
 if TYPE_CHECKING:
@@ -23,11 +29,40 @@ def test_load_project_config_defaults(tmp_path: Path):
     assert config.setup_prompt is None
     assert config.pull_before_create is False
     assert config.push is False
+    assert config.auto_teardown is False
     assert config.setup == []
     assert config.pre_merge == []
     assert config.post_merge == []
     assert config.teardown == []
     assert config.env == {}
+
+
+@pytest.mark.parametrize("filename", [".new-feature.toml", "pyproject.toml", ".new-feature.local.toml"])
+@pytest.mark.parametrize("enabled", [True, False])
+def test_auto_teardown_config(tmp_path: Path, filename: str, enabled: bool):
+    header = "[tool.new-feature]\n" if filename == "pyproject.toml" else ""
+    (tmp_path / filename).write_text(f"{header}auto-teardown = {str(enabled).lower()}\n", encoding="utf-8")
+
+    assert load_project_config(tmp_path).auto_teardown is enabled
+
+
+@pytest.mark.parametrize("value", ['"true"', "1", "[]"])
+def test_auto_teardown_requires_boolean(tmp_path: Path, value: str):
+    (tmp_path / ".new-feature.toml").write_text(f"auto-teardown = {value}\n", encoding="utf-8")
+
+    with pytest.raises(NewFeatureError, match=r"auto-teardown must be a boolean"):
+        load_project_config(tmp_path)
+
+
+def test_local_config_can_disable_shared_auto_teardown(tmp_path: Path):
+    (tmp_path / ".new-feature.toml").write_text("auto-teardown = true\n", encoding="utf-8")
+    (tmp_path / ".new-feature.local.toml").write_text("auto-teardown = false\n", encoding="utf-8")
+
+    assert load_project_config(tmp_path).auto_teardown is False
+
+
+def test_auto_teardown_affects_config_fingerprint():
+    assert config_fingerprint(ProjectConfig()) != config_fingerprint(ProjectConfig(auto_teardown=True))
 
 
 def test_global_config_supplies_default_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
