@@ -1,5 +1,9 @@
 # Design conventions
 
+For advisory module naming and durable coding preferences, use the
+`coding-conventions` skill shipped with Strictify. Read only its relevant
+references; the project-specific decisions below remain canonical.
+
 ## Composition over inheritance
 
 Combine small functions and plain objects directly. Add inheritance only when there is a real substitutability relationship, not to share incidental code.
