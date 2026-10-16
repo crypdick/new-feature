@@ -215,6 +215,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if args.command == "merge":
         boundary = args.git_args.index("--") if "--" in args.git_args else len(args.git_args)
         own_arguments = args.git_args[:boundary]
+        # NOTE: README.md's Lifecycle section reserves help for the wrapper,
+        # even after NAME; argparse.REMAINDER otherwise forwards it to Git.
+        if {"--help", "-h"}.intersection(own_arguments):
+            parser.parse_args(["merge", "--help"])
         args.include_untracked |= "--include-untracked" in own_arguments
         args.git_args = [value for value in own_arguments if value != "--include-untracked"] + args.git_args[
             boundary:
