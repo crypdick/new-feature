@@ -130,6 +130,38 @@ def test_teardown_removes_only_preserved_local_work_and_disposable_files(tmp_pat
     assert not (tmp_path / "scratch").exists()
 
 
+@pytest.mark.parametrize("environment", [".venv", "venv", "nested/.venv"])
+@pytest.mark.parametrize("broken", [False, True])
+def test_teardown_discards_environment_link_without_touching_target(
+    tmp_path: Path, monkeypatch, environment, broken
+):
+    worktree = create_feature(tmp_path, monkeypatch)
+    external = tmp_path / "shared-environment"
+    if not broken:
+        external.mkdir()
+        (external / "keep").write_text("shared", encoding="utf-8")
+    link = worktree / environment
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(external, target_is_directory=True)
+    assert main(["teardown", "demo"]) == 0
+    assert not worktree.exists()
+    if not broken:
+        assert (external / "keep").read_text() == "shared"
+    else:
+        assert not external.exists()
+
+
+def test_teardown_discards_hypothesis_cache_without_overwriting_control(tmp_path: Path, monkeypatch):
+    worktree = create_feature(tmp_path, monkeypatch)
+    for root, contents in [(tmp_path, "control"), (worktree, "feature")]:
+        cache = root / ".hypothesis/constants/example"
+        cache.parent.mkdir(parents=True)
+        cache.write_text(contents, encoding="utf-8")
+    assert main(["teardown", "demo"]) == 0
+    assert not worktree.exists()
+    assert (tmp_path / ".hypothesis/constants/example").read_text() == "control"
+
+
 @pytest.mark.parametrize("change", ["content", "permissions"])
 def test_teardown_protects_sources_when_target_copy_changes(tmp_path: Path, monkeypatch, capsys, change):
     worktree = create_feature(tmp_path, monkeypatch)

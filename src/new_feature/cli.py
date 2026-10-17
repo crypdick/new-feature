@@ -283,6 +283,10 @@ def _commit_feature_merge(
         )
         # NOTE: README.md documents that custom Git arguments may commit before post-merge checks.
         pending_commit = merge_in_progress(root) or not worktree_is_clean(root)
+        if not pending_commit and not is_branch_merged(
+            root, branch=record.branch, target_branch=record.target_branch
+        ):
+            raise NewFeatureError("git merge did not integrate the feature branch")
         run_commands(
             config.post_merge,
             cwd=root,

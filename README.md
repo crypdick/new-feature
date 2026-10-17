@@ -162,6 +162,9 @@ Pass additional arguments after `NAME` to `git merge`, for example
 they are passed as-is, and new-feature skips its default conflict preflight so
 Git's merge options control conflict handling. Git may commit or fast-forward
 before post-merge checks; failed merges or checks still attempt rollback.
+`--help` and `-h` show wrapper help even after `NAME`, without running checks,
+merging, pushing, or tearing down. A successful Git command that neither integrates
+the branch nor prepares changes for a merge commit is treated as a failure.
 
 Merge-check failures print a log path under `.new-feature/diagnostics/merge-failures/`.
 If push fails, rerun merge to retry. By default, merge leaves the worktree in place.
@@ -279,9 +282,11 @@ apply. Matching files are excluded from transfer and may be deleted by normal
 teardown, so list only disposable paths.
 
 Built-in disposable paths are `.new-feature/`, `.worktrees/`, `__pycache__/`,
-`.venv/`, `venv/`, `node_modules/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`,
+`.venv/`, `venv/`, `node_modules/`, `.pytest_cache/`, `.hypothesis/`, `.mypy_cache/`, `.ruff_cache/`,
 `.cache/`, `build/`, `dist/`, `site/`, `*.egg-info/`, and `htmlcov/`. Built-in file
 patterns are `*.pyc`, `*.pyo`, `.coverage`, `.coverage.*`, `*.tmp`, `*.swp`, and `*~`.
+Environment paths named `.venv` or `venv` are also disposable when they are
+symlinks; teardown removes the link without following it or deleting its target.
 
 Local file checks are best effort; stop writers before transfer or teardown.
 

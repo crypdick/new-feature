@@ -92,6 +92,28 @@ def test_merge_honors_ff_only_option(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert target_revision == feature_revision
 
 
+def test_successful_git_noop_cannot_record_or_push_a_merge(tmp_path: Path, monkeypatch, capsys):
+    from new_feature.manifest import load_manifest
+
+    init_git_repo(tmp_path, "[tool.new-feature]\npush=true\nauto-teardown=true\n")
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["create", "demo", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees/demo"
+    (worktree / "feature.txt").write_text("feature", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature"], cwd=worktree, check=True)
+    before = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path)
+    monkeypatch.setattr(cli, "merge_feature_branch", lambda *_args, **_kwargs: None)
+    pushes = []
+    monkeypatch.setattr(cli, "push_target", lambda *_args, **_kwargs: pushes.append(True))
+    assert cli.main(["merge", "demo"]) == 1
+    assert "did not integrate" in capsys.readouterr().err
+    assert load_manifest(tmp_path).features["demo"].status == "active"
+    assert pushes == []
+    assert worktree.exists()
+    assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path) == before
+
+
 def test_merge_honors_no_commit_and_edit_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     init_git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -163,3 +185,17 @@ def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
     assert cli._merge(tmp_path, "my-feature") == 0
     assert merged == ["feature/my-feature"]
     assert pushed == ["main", "main"]
+
+
+@pytest.mark.parametrize("help_flag", ["--help", "-h"])
+def test_merge_help_after_feature_never_runs_lifecycle(monkeypatch, capsys, help_flag):
+    from new_feature import cli
+
+    def unexpected_dispatch(*_args, **_kwargs):
+        pytest.fail("help must exit before repository lookup or lifecycle execution")
+
+    monkeypatch.setattr(cli, "_run", unexpected_dispatch)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["merge", "my-feature", help_flag])
+    assert exc.value.code == 0
+    assert "check and merge" in capsys.readouterr().out.lower()
