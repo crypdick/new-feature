@@ -49,7 +49,8 @@ Failed checks stop the merge. The command pushes only when push = true.
 With auto-teardown = true, success runs normal teardown after any push.
 Teardown failure leaves the merge intact and returns nonzero.
 Run from the original checkout or a managed feature worktree. Automatic teardown
-refuses processes inside the feature worktree; otherwise, use teardown afterward.
+refuses other processes inside the feature worktree, including your shell;
+otherwise, use teardown afterward.
 """
 
 TEARDOWN_DESCRIPTION = """\

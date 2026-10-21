@@ -175,8 +175,9 @@ for an already-merged feature. Failed merge checks, local file transfer, or push
 skip teardown. Teardown failure returns nonzero and leaves the completed merge
 intact; resolve the reported issue, then rerun merge or run teardown directly.
 Automatic teardown uses the same safety checks as manual teardown and never
-uses `--force`. Run merge from the original checkout and stop processes in the
-feature worktree first; processes with working directories inside it block removal.
+uses `--force`. Stop other processes in the feature worktree first; processes with
+working directories inside it block removal. That includes your shell, so run
+merge from the original checkout.
 
 Teardown runs your cleanup commands, then removes the worktree and branch. If
 cleanup fails, removal stops even with `--force`. Use `--force` only to discard
@@ -194,7 +195,8 @@ snapshot, and preview cannot predict cleanup failure. `--force --dry-run` previe
 forced removal; cleanup failure still stops real removal.
 
 On Linux, teardown also refuses processes owned by your user whose working
-directory is the worktree or a directory beneath it. It checks before cleanup and
+directory is the worktree or a directory beneath it, except new-feature itself,
+which moves to the original checkout before removal. It checks before cleanup and
 again immediately before removal. Stop those processes or use
 `--force`, which bypasses this check without stopping them. Process protection is
 best effort: it skips processes that disappear or have unreadable `/proc/PID/cwd`,

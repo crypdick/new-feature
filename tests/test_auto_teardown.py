@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import subprocess
-from typing import TYPE_CHECKING
+import sys
+from pathlib import Path
 
 import pytest
 
 from new_feature.cli import main
 from new_feature.manifest import load_manifest
 from tests.conftest import init_git_repo
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 @pytest.fixture
@@ -115,15 +113,30 @@ def test_auto_teardown_protects_unpreserved_ignored_files(feature: Path, capsys)
     assert not (feature / ".worktrees/demo").exists()
 
 
-def test_auto_teardown_keeps_process_guard_when_invoked_from_feature(feature: Path, monkeypatch, capsys):
+def test_auto_teardown_from_feature_ignores_own_process(feature: Path, monkeypatch):
     monkeypatch.chdir(feature / ".worktrees/demo")
+    assert main(["merge", "demo"]) == 0
+    assert Path.cwd() == feature
+    assert not (feature / ".worktrees/demo").exists()
+
+
+def test_auto_teardown_from_feature_keeps_process_guard(feature: Path, capsys):
+    worktree = feature / ".worktrees/demo"
+    shell = subprocess.Popen(
+        [sys.executable, "-c", "import sys; print('ready', flush=True); sys.stdin.read()"],
+        cwd=worktree,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
     try:
+        assert shell.stdout.readline() == "ready\n"
         assert main(["merge", "demo"]) == 1
-        assert "processes have working directories" in capsys.readouterr().err
+        assert f"PID {shell.pid}" in capsys.readouterr().err
         assert (feature / "feature.txt").exists()
         assert load_manifest(feature).features["demo"].status == "merged"
     finally:
-        monkeypatch.chdir(feature)
+        shell.communicate(timeout=5)
 
     assert main(["merge", "demo"]) == 0
-    assert not (feature / ".worktrees/demo").exists()
+    assert not worktree.exists()

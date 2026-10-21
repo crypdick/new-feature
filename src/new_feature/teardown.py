@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 - beartype needs annotation types at runtime
+from pathlib import Path
 
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, load_project_config
@@ -53,6 +54,8 @@ def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> in
                 "feature worktree has uncommitted tracked changes; pass --force to abandon them"
             )
         require_local_files_preserved(root, target.worktree, config.safe_to_delete)
+    if Path.cwd().is_relative_to(target.worktree.resolve()):
+        os.chdir(root)
     remove_worktree_and_branch(
         root,
         branch=target.branch,
