@@ -31,7 +31,8 @@ Examples:
   new-feature my-feature --no-agent
   new-feature create my-feature --dry-run
 
-Use --no-agent inside an existing agent session. Work in the printed path.
+Codex and Claude Code child sessions infer --no-agent unless --agent is explicit.
+Use --no-agent in other agent runners. Work in the printed path.
 Run from the original checkout or a managed feature worktree.
 """
 
