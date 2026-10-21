@@ -66,6 +66,7 @@ def test_invalid_policy_reports_checker_failure(tmp_path, monkeypatch, capsys, n
         {"kind": "shell"},
         {"kind": "shell", "cwd": "/somewhere", "command": 3},
         {"kind": "file_edit", "cwd": "/somewhere", "paths": [3]},
+        {"kind": "shell", "cwd": "/somewhere", "command": "true", "tool_use_id": 3},
     ],
 )
 def test_malformed_neutral_event_fails(monkeypatch, payload):

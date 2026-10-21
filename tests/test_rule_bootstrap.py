@@ -11,7 +11,7 @@ def executable(path, body):
     path.chmod(0o755)
 
 
-@pytest.mark.parametrize("version", [None, "0.4.12", "0.5.0"])
+@pytest.mark.parametrize("version", [None, "0.5.0", "0.6.0"])
 def test_runner_is_upgraded_before_registration(tmp_path, monkeypatch, version):
     monkeypatch.setenv("PATH", str(tmp_path))
     log = tmp_path / "calls"
@@ -34,14 +34,14 @@ printf '#!/bin/sh\\necho ensure >> "$CALL_LOG"\\n' > "$RUNNER_BIN"
 """,
         )
     ensure_runner()
-    expected = ["ensure"] if version == "0.5.0" else ["tool install --upgrade i-insist>=0.5.0", "ensure"]
+    expected = ["ensure"] if version == "0.6.0" else ["tool install --upgrade i-insist>=0.6.0", "ensure"]
     assert log.read_text().splitlines() == expected
 
 
 def test_disabled_runner_aborts_migration(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
     executable(
-        tmp_path / "i-insist", 'if [ "$1" = "--version" ]; then echo "i-insist 0.5.0"; else exit 2; fi\n'
+        tmp_path / "i-insist", 'if [ "$1" = "--version" ]; then echo "i-insist 0.6.0"; else exit 2; fi\n'
     )
     with pytest.raises(NewFeatureError, match="enable its hooks"):
         ensure_runner()

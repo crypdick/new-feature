@@ -219,3 +219,38 @@ def test_post_check_without_a_record_flags_existing_changes(tmp_path: Path) -> N
     (tmp_path / "README.md").write_text("# changed\n", encoding="utf-8")
     event = {"kind": "shell", "cwd": str(tmp_path), "command": "python3 edit.py"}
     assert should_block("target-shell-changes", event)
+
+
+def call_event(cwd: Path, call_id: str) -> dict[str, object]:
+    return {"kind": "shell", "cwd": str(cwd), "command": "python3 edit.py", "tool_use_id": call_id}
+
+
+def test_post_check_keeps_concurrent_calls_separate(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    first, second = call_event(tmp_path, "toolu_a"), call_event(tmp_path, "toolu_b")
+    assert not should_block("target-branch", first)
+    assert not should_block("target-branch", second)
+    (tmp_path / "README.md").write_text("# changed by the second call\n", encoding="utf-8")
+    assert should_block("target-shell-changes", first)
+    assert should_block("target-shell-changes", second)
+
+
+def test_post_check_removes_its_record_and_prunes_stale_records(tmp_path: Path) -> None:
+    import os
+
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    records = tmp_path / ".git/new-feature-shell-changes"
+    records.mkdir()
+    stale = records / "stale.json"
+    stale.write_text("{}", encoding="utf-8")
+    os.utime(stale, (0, 0))
+    event = call_event(tmp_path, "toolu_a")
+    assert not should_block("target-branch", event)
+    assert not stale.exists()
+    assert len(list(records.iterdir())) == 1
+    assert not should_block("target-shell-changes", event)
+    assert not list(records.iterdir())

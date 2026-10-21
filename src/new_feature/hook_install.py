@@ -40,8 +40,8 @@ def ensure_runner() -> None:
             if result is not None and result.returncode == 0
             else None
         )
-        if current is None or tuple(map(int, current.groups())) < (0, 5, 0):
-            subprocess.run(["uv", "tool", "install", "--upgrade", "i-insist>=0.5.0"], check=True)
+        if current is None or tuple(map(int, current.groups())) < (0, 6, 0):
+            subprocess.run(["uv", "tool", "install", "--upgrade", "i-insist>=0.6.0"], check=True)
         subprocess.run(["i-insist", "ensure"], check=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise NewFeatureError(

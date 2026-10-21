@@ -82,12 +82,15 @@ Edit checks also cover common shell writes: output redirections, `tee`, in-place
 Guards recognize Git directory options and simple `cd` commands. They don't parse
 arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
 A post-command rule covers those: before each shell command on the target branch, the
-edit check records tracked changes in the checkout's Git directory. After the command,
+edit check records tracked changes in the checkout's Git directory, one record per
+harness `tool_use_id`. After the command,
 any tracked file that is newly changed, changed again, or deleted is reported to the
 agent. The command's effects remain; the report tells the agent to move the change into
-a feature worktree without discarding changes it didn't make. Concurrent shell commands
-in one checkout share that record, so one command can mask another's changes. Post rules
-require i-insist 0.5.0 or later.
+a feature worktree without discarding changes it didn't make. A concurrent command's
+changes can also appear in another call's report. Without a `tool_use_id`, calls share
+one record, so one command can mask another's changes. Records older than a day are
+pruned. Claude's failed tool calls are covered too. These checks require i-insist 0.6.0
+or later.
 
 Installation sets up i-insist from PyPI, verifies enabled hooks, and atomically
 replaces the generated rule registration for new-feature. Checkers return JSON `null` to allow

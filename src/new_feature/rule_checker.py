@@ -38,7 +38,7 @@ def should_block(name: str, event: object) -> bool:
         command = event.get("command")
         if not isinstance(command, str):
             raise ValueError("shell event needs command")
-        return _blocks_shell(name, command, cwd=Path(cwd))
+        return _blocks_shell(name, command, cwd=Path(cwd), call_id=_call_id(event.get("tool_use_id")))
     if kind in {"file_write", "file_edit"}:
         paths = event.get("paths")
         if not isinstance(paths, list) or any(not isinstance(path, str) or not path for path in paths):
@@ -50,17 +50,23 @@ def should_block(name: str, event: object) -> bool:
     return False
 
 
-def _blocks_shell(name: str, command: str, *, cwd: Path) -> bool:
+def _call_id(value: object) -> str | None:
+    if value is None or (isinstance(value, str) and value):
+        return value
+    raise ValueError("tool_use_id must be a nonempty string")
+
+
+def _blocks_shell(name: str, command: str, *, cwd: Path, call_id: str | None) -> bool:
     if name == "target-merge":
         return blocks_target_merge(command, cwd=cwd)
     if name == "target-branch":
         if blocks_target_edit(shell_write_targets(command, cwd=cwd), cwd=cwd):
             return True
         # The post-phase target-shell-changes rule compares against this record.
-        record_target_changes(cwd=cwd)
+        record_target_changes(cwd=cwd, call_id=call_id)
         return False
     if name == "target-shell-changes":
-        return target_changed_since_record(cwd=cwd)
+        return target_changed_since_record(cwd=cwd, call_id=call_id)
     return name == f"worktree-{parse_worktree_action(command)}"
 
 
