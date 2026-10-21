@@ -102,3 +102,67 @@ def test_policy_rejects_ignored_symlink_outside_repository(tmp_path: Path) -> No
     (project / ".gitignore").write_text("drafts\n", encoding="utf-8")
     (project / "drafts").symlink_to(tmp_path / "external-file")
     assert blocked((project / "drafts",), cwd=project)
+
+
+def shell_blocked(command: str, *, cwd: Path) -> bool:
+    return should_block("target-branch", {"kind": "shell", "cwd": str(cwd), "command": command})
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sed -i s/demo/x/ README.md",
+        "sed -i.bak -e s/demo/x/ README.md",
+        "perl -pi -e s/demo/x/ README.md",
+        "cat > README.md <<'EOF'\nx\nEOF",
+        "echo x >>README.md",
+        "printf x 2>/dev/null >| README.md",
+        "echo x &> README.md",
+        "echo x | tee -a README.md",
+        "cp /etc/hostname README.md",
+        "mv README.md moved.md",
+        "rm -f README.md",
+        "rm -- README.md",
+        "truncate -s 0 README.md",
+        "cd sub && echo x > ../README.md",
+        "touch new-file.py",
+    ],
+)
+def test_policy_rejects_shell_writes_on_target_branch(tmp_path: Path, command: str) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / "sub").mkdir()
+    assert shell_blocked(command, cwd=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git status",
+        "FOO=bar",
+        "echo x | tee -",
+        "cat README.md",
+        "sed s/demo/x/ README.md",
+        "grep demo README.md > /dev/null 2>&1",
+        "echo x > drafts/note.md",
+        "rm -rf drafts",
+        "cp README.md /tmp/elsewhere.md",
+        "echo x > /tmp/elsewhere.md",
+    ],
+)
+def test_policy_allows_shell_reads_and_ignored_writes(tmp_path: Path, command: str) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("drafts/\n", encoding="utf-8")
+    (tmp_path / "drafts").mkdir()
+    assert not shell_blocked(command, cwd=tmp_path)
+
+
+def test_policy_allows_shell_writes_on_feature_branch(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    subprocess.run(["git", "checkout", "-b", "feature"], cwd=tmp_path, check=True)
+    assert not shell_blocked("sed -i s/demo/x/ README.md", cwd=tmp_path)

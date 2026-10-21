@@ -11,6 +11,7 @@ from new_feature.hook_policy import (
     blocks_target_edit,
     blocks_target_merge,
     parse_worktree_action,
+    shell_write_targets,
 )
 
 MESSAGES = {
@@ -34,16 +35,32 @@ def should_block(name: str, event: object) -> bool:
         command = event.get("command")
         if not isinstance(command, str):
             raise ValueError("shell event needs command")
-        if name == "target-merge":
-            return blocks_target_merge(command, cwd=Path(cwd))
-        return name == f"worktree-{parse_worktree_action(command)}"
+        return _blocks_shell(name, command, cwd=Path(cwd))
     if kind in {"file_write", "file_edit"}:
         paths = event.get("paths")
         if not isinstance(paths, list) or any(not isinstance(path, str) or not path for path in paths):
             raise ValueError("file event needs paths")
         if name == "target-branch":
             return blocks_target_edit(tuple(Path(path) for path in paths), cwd=Path(cwd))
+    if name == "worktree-add":
+        return _creates_harness_worktree(event.get("tool_name"), event.get("tool_input"))
     return False
+
+
+def _blocks_shell(name: str, command: str, *, cwd: Path) -> bool:
+    if name == "target-merge":
+        return blocks_target_merge(command, cwd=cwd)
+    if name == "target-branch":
+        return blocks_target_edit(shell_write_targets(command, cwd=cwd), cwd=cwd)
+    return name == f"worktree-{parse_worktree_action(command)}"
+
+
+def _creates_harness_worktree(tool_name: object, tool_input: object) -> bool:
+    # NOTE: docs/ARCHITECTURE.md's Agent guards cover Claude Code's native worktree tools.
+    arguments = tool_input if isinstance(tool_input, dict) else {}
+    if tool_name == "EnterWorktree":
+        return "path" not in arguments
+    return tool_name == "Agent" and arguments.get("isolation") == "worktree"
 
 
 def main(name: str) -> int:

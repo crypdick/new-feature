@@ -99,3 +99,27 @@ def isolated_runner(monkeypatch):
     from new_feature import hook_install
 
     monkeypatch.setattr(hook_install, "ensure_runner", lambda: None)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "tool_input", "expected"),
+    [
+        ("EnterWorktree", {"name": "demo"}, True),
+        ("EnterWorktree", {}, True),
+        ("EnterWorktree", {"path": ".worktrees/demo"}, False),
+        ("Agent", {"prompt": "x", "isolation": "worktree"}, True),
+        ("Agent", {"prompt": "x"}, False),
+        ("Read", {"file_path": "README.md"}, False),
+    ],
+)
+def test_harness_worktree_tools_require_new_feature(tmp_path, monkeypatch, tool_name, tool_input, expected):
+    event = {
+        "kind": "other",
+        "cwd": str(tmp_path),
+        "paths": [],
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+    }
+    status, output = check(monkeypatch, event)
+    assert status == 0
+    assert (json.loads(output) is not None) is expected
