@@ -11,13 +11,16 @@ from new_feature.hook_policy import (
     blocks_target_edit,
     blocks_target_merge,
     parse_worktree_action,
+    record_target_changes,
     shell_write_targets,
+    target_changed_since_record,
 )
 
 MESSAGES = {
     "worktree-add": "Direct git worktree add is disabled. Use new-feature <feature-name> --no-agent, then work in .worktrees/<feature-name>. Only the human can authorize an override with I insist.",
     "worktree-remove": "Direct git worktree remove is disabled. Use new-feature teardown <feature-name>. Only the human can authorize an override with I insist.",
     "target-branch": "Direct edits on the repository's target branch are disabled. Run new-feature <feature-name> --no-agent, then continue in .worktrees/<feature-name>. Only the human can authorize an override with I insist.",
+    "target-shell-changes": "This shell command changed tracked files in the target-branch checkout; run git status there to see them. Move your change into a feature worktree with new-feature <feature-name> --no-agent, then restore only the files you changed with git restore. Don't discard changes you didn't make.",
     "target-merge": "Direct git merge on the target branch is disabled. Use new-feature merge <feature-name>. Recovery remains allowed: git merge --continue, --abort, or --quit. Only the human can authorize an override with I insist.",
 }
 
@@ -51,7 +54,13 @@ def _blocks_shell(name: str, command: str, *, cwd: Path) -> bool:
     if name == "target-merge":
         return blocks_target_merge(command, cwd=cwd)
     if name == "target-branch":
-        return blocks_target_edit(shell_write_targets(command, cwd=cwd), cwd=cwd)
+        if blocks_target_edit(shell_write_targets(command, cwd=cwd), cwd=cwd):
+            return True
+        # The post-phase target-shell-changes rule compares against this record.
+        record_target_changes(cwd=cwd)
+        return False
+    if name == "target-shell-changes":
+        return target_changed_since_record(cwd=cwd)
     return name == f"worktree-{parse_worktree_action(command)}"
 
 

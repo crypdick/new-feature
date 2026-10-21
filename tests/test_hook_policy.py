@@ -166,3 +166,56 @@ def test_policy_allows_shell_writes_on_feature_branch(tmp_path: Path) -> None:
     init_git_repo(tmp_path)
     subprocess.run(["git", "checkout", "-b", "feature"], cwd=tmp_path, check=True)
     assert not shell_blocked("sed -i s/demo/x/ README.md", cwd=tmp_path)
+
+
+def shell_changed(command: str, *, cwd: Path) -> bool:
+    event = {"kind": "shell", "cwd": str(cwd), "command": command}
+    assert not should_block("target-branch", event)
+    return should_block("target-shell-changes", event)
+
+
+def test_post_check_flags_tracked_changes_from_unparsed_shell_writes(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    readme = tmp_path / "README.md"
+    assert not shell_changed("true", cwd=tmp_path)
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": "python3 edit.py"}
+    assert not should_block("target-branch", event)
+    readme.write_text("# changed by a script\n", encoding="utf-8")
+    assert should_block("target-shell-changes", event)
+
+
+def test_post_check_ignores_changes_present_before_the_command(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    readme = tmp_path / "README.md"
+    readme.write_text("# human edit\n", encoding="utf-8")
+    assert not shell_changed("git status", cwd=tmp_path)
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": "python3 edit.py"}
+    assert not should_block("target-branch", event)
+    readme.write_text("# human edit, then a script\n", encoding="utf-8")
+    assert should_block("target-shell-changes", event)
+    assert not should_block("target-shell-changes", event)
+
+
+def test_post_check_flags_deleted_tracked_files_and_skips_feature_branches(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": "python3 cleanup.py"}
+    assert not should_block("target-branch", event)
+    (tmp_path / "README.md").unlink()
+    assert should_block("target-shell-changes", event)
+    subprocess.run(["git", "checkout", "-q", "-b", "feature"], cwd=tmp_path, check=True)
+    assert not should_block("target-shell-changes", event)
+
+
+def test_post_check_without_a_record_flags_existing_changes(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / "README.md").write_text("# changed\n", encoding="utf-8")
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": "python3 edit.py"}
+    assert should_block("target-shell-changes", event)

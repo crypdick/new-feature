@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import re
 import shlex
 import subprocess
@@ -78,6 +79,49 @@ def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
                 continue
             return True
     return False
+
+
+def record_target_changes(*, cwd: Path) -> None:
+    """Remember tracked changes on the target branch before a shell command runs."""
+    snapshot = _target_change_snapshot(cwd)
+    if snapshot is not None:
+        path, changes = snapshot
+        path.write_text(json.dumps(changes), encoding="utf-8")
+
+
+def target_changed_since_record(*, cwd: Path) -> bool:
+    """Check whether tracked target-branch files changed since the last record."""
+    # NOTE: docs/ARCHITECTURE.md's Agent guards describe this post-command check.
+    snapshot = _target_change_snapshot(cwd)
+    if snapshot is None:
+        return False
+    path, changes = snapshot
+    try:
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        recorded = {}
+    path.write_text(json.dumps(changes), encoding="utf-8")
+    return any(name not in recorded or recorded[name] != signature for name, signature in changes.items())
+
+
+def _target_change_snapshot(cwd: Path) -> tuple[Path, dict[str, list[int] | None]] | None:
+    # NOTE: one record per checkout; concurrent shell calls in one checkout can mask each other.
+    context = _git_context_for(cwd, cwd=cwd)
+    if context is None or context.branch != context.target_branch:
+        return None
+    git_dir = _git_output(context.root, "rev-parse", "--absolute-git-dir")
+    names = _git_output(context.root, "diff", "HEAD", "--name-only", "--no-renames", "-z")
+    if git_dir is None or names is None:  # pragma: no cover - context proved a repository with history
+        return None
+    changes: dict[str, list[int] | None] = {}
+    for name in filter(None, names.split("\0")):
+        try:
+            status = (context.root / name).lstat()
+        except FileNotFoundError:
+            changes[name] = None
+        else:
+            changes[name] = [status.st_mtime_ns, status.st_size]
+    return Path(git_dir) / "new-feature-shell-changes.json", changes
 
 
 def parse_worktree_action(command: str) -> WorktreeAction | None:
