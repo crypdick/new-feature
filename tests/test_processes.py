@@ -32,3 +32,11 @@ def test_process_scan_ignores_other_users(tmp_path: Path, monkeypatch):
     (entry / "cwd").symlink_to(tmp_path)
     monkeypatch.setattr(os, "getuid", lambda: entry.stat().st_uid + 1)
     assert worktree_processes(tmp_path, proc_root=proc) == []
+
+
+def test_process_scan_ignores_own_process(tmp_path: Path):
+    proc = tmp_path / "proc"
+    entry = proc / str(os.getpid())
+    entry.mkdir(parents=True)
+    (entry / "cwd").symlink_to(tmp_path)
+    assert worktree_processes(tmp_path, proc_root=proc) == []

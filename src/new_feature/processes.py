@@ -9,7 +9,7 @@ from new_feature.errors import NewFeatureError
 
 
 def worktree_processes(worktree: Path, *, proc_root: Path = Path("/proc")) -> list[int]:
-    """Find same-user processes with a working directory inside this worktree."""
+    """Find other same-user processes with a working directory inside this worktree."""
     worktree = worktree.resolve()
     try:
         entries = list(proc_root.iterdir())
@@ -19,7 +19,8 @@ def worktree_processes(worktree: Path, *, proc_root: Path = Path("/proc")) -> li
         ) from exc
     processes: list[int] = []
     for entry in entries:
-        if not entry.name.isdecimal():
+        # This process leaves the worktree before removal; see teardown.
+        if not entry.name.isdecimal() or int(entry.name) == os.getpid():
             continue
         try:
             if entry.stat().st_uid != os.getuid():
