@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import re
 import shlex
 import subprocess
@@ -40,6 +41,14 @@ _SUDO_OPTIONS_WITH_VALUES = {
     "-u",
     "--user",
 }
+_REDIRECT_WRITES = {">", ">>", ">|", "&>", "&>>", "<>"}
+_REDIRECT_OPERATORS = _REDIRECT_WRITES | {"<", "<<", "<<<", ">&", "<&"}
+_FD_DUPLICATION = re.compile(r"\d+-?|-\Z")
+_IN_PLACE_EDITORS = {"sed", "perl"}
+_IN_PLACE_SCRIPT_OPTIONS = {"-e", "-f", "--expression", "--file"}
+_LAST_ARGUMENT_WRITERS = {"cp", "install", "ln"}
+_ALL_ARGUMENT_WRITERS = {"tee", "mv", "rm", "touch", "truncate"}
+_WRITER_OPTIONS_WITH_VALUES = {"-s", "--size", "-r", "--reference", "-m", "--mode", "-S", "--suffix"}
 _GIT_OPTIONS_WITH_VALUES = {
     "-C",
     "-c",
@@ -104,9 +113,89 @@ def blocks_target_merge(command: str, *, cwd: Path) -> bool:
     return False
 
 
+def shell_write_targets(command: str, *, cwd: Path) -> tuple[Path, ...]:
+    """Return files that common shell redirections and file utilities would write."""
+    # NOTE: docs/ARCHITECTURE.md's Agent guards list the recognized shell writes.
+    targets: list[Path] = []
+    for shell_command in _parse_shell_commands(command):
+        if shell_command[0] == "cd" and len(shell_command) in {2, 3}:
+            cwd = cwd / Path(shell_command[-1]).expanduser()
+            continue
+        targets.extend(cwd / Path(word).expanduser() for word in _redirect_targets(shell_command))
+        targets.extend(cwd / Path(word).expanduser() for word in _utility_targets(shell_command))
+    return tuple(targets)
+
+
+def _redirect_targets(command: list[str]) -> list[str]:
+    targets = []
+    for operator, target in itertools.pairwise(command):
+        if operator in _REDIRECT_WRITES or (operator == ">&" and not _FD_DUPLICATION.fullmatch(target)):
+            targets.append(target)
+    return targets
+
+
+def _utility_targets(command: list[str]) -> list[str]:
+    index = _executable_index(command)
+    if index is None:
+        return []
+    executable = Path(command[index]).name
+    arguments = _without_redirects(command[index + 1 :])
+    if executable in _IN_PLACE_EDITORS:
+        return _in_place_targets(arguments)
+    if executable not in _LAST_ARGUMENT_WRITERS | _ALL_ARGUMENT_WRITERS:
+        return []
+    operands = _operands(arguments, options_with_values=_WRITER_OPTIONS_WITH_VALUES)
+    return operands[-1:] if executable in _LAST_ARGUMENT_WRITERS else operands
+
+
+def _in_place_targets(arguments: list[str]) -> list[str]:
+    in_place = any(
+        word.startswith("--in-place") or (re.fullmatch(r"-[A-Za-z]*i.*", word) is not None)
+        for word in arguments
+    )
+    if not in_place:
+        return []
+    operands = _operands(arguments, options_with_values=_IN_PLACE_SCRIPT_OPTIONS)
+    has_script_option = any(word.split("=", 1)[0] in _IN_PLACE_SCRIPT_OPTIONS for word in arguments)
+    return operands if has_script_option else operands[1:]
+
+
+def _without_redirects(arguments: list[str]) -> list[str]:
+    result: list[str] = []
+    index = 0
+    while index < len(arguments):
+        word = arguments[index]
+        following = arguments[index + 1] if index + 1 < len(arguments) else ""
+        if word in _REDIRECT_OPERATORS:
+            index += 2
+            continue
+        # A file descriptor number such as the 2 in 2>/dev/null belongs to the redirect.
+        if not (word.isdigit() and following in _REDIRECT_OPERATORS):
+            result.append(word)
+        index += 1
+    return result
+
+
+def _operands(arguments: list[str], *, options_with_values: set[str]) -> list[str]:
+    operands: list[str] = []
+    index = 0
+    while index < len(arguments):
+        word = arguments[index]
+        if word == "--":
+            operands.extend(arguments[index + 1 :])
+            break
+        if word.split("=", 1)[0] in options_with_values and "=" not in word:
+            index += 2
+            continue
+        if not word.startswith("-"):
+            operands.append(word)
+        index += 1
+    return operands
+
+
 def _parse_shell_commands(command: str) -> list[list[str]]:
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()\n")
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>\n")
         lexer.whitespace = " \t\r"
         lexer.whitespace_split = True
         return _shell_commands(list(lexer))

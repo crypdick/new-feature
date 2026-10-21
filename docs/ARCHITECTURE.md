@@ -66,7 +66,9 @@ See [Local file transfer](https://new-feature.ricardodecal.com/#local-file-trans
 
 Guards enforce these policies through i-insist:
 
-- Create and remove worktrees through `new-feature`.
+- Create and remove worktrees through `new-feature`. This also blocks Claude Code's
+  `EnterWorktree` when it creates a worktree and Agent calls with worktree isolation.
+  `EnterWorktree` with a `path` can still enter an existing worktree.
 - Edit on a feature branch, except before the first commit or when editing
   ignored, untracked paths. Tracked files remain protected even under ignored
   directories; symlinks are checked against their resolved destinations.
@@ -75,8 +77,10 @@ Guards enforce these policies through i-insist:
 - Arguments after the feature name pass through to `git merge`; supplying them skips
   the default conflict preflight so Git's merge strategy options can take effect.
 
+Edit checks also cover common shell writes: output redirections, `tee`, in-place
+`sed` and `perl`, `cp`, `install`, `ln`, `mv`, `rm`, `touch`, and `truncate`.
 Guards recognize Git directory options and simple `cd` commands. They don't inspect
-arbitrary scripts, Git aliases, or shell file writes.
+arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
 
 Installation sets up i-insist from PyPI, verifies enabled hooks, and atomically
 replaces the generated rule registration for new-feature. Checkers return JSON `null` to allow
