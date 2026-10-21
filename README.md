@@ -42,8 +42,13 @@ worktrees for edits and commits. If you're already in a coding agent session, us
 printed absolute worktree path for the agent's tools.
 
 To launch an agent in the worktree, use `new-feature my-feature --agent claude`.
-Without `--agent`, creation uses `default_agent` if configured. Use `--no-agent`
-to suppress it, including when you're already in an agent session.
+Without `--agent`, creation uses `default_agent` if configured. Creation infers
+`--no-agent` when `CODEX_CI=1` or `CLAUDE_CODE_CHILD_SESSION=1`, so commands issued
+by Codex or Claude Code reuse the current agent session and print the worktree path.
+Explicit `--agent` overrides this inference; `--prompt` in a detected session requires
+explicit `--agent`. `setup` still launches its selected agent.
+Use `--no-agent` to suppress launch in other runners or terminals. Detection uses
+these environment markers, not TTY availability or `TERM`.
 
 `new-feature NAME` is shorthand for `new-feature create NAME`. Replace `NAME` with
 your feature name. Names become branch and directory slugs. Use explicit `create`

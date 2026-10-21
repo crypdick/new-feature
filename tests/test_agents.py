@@ -208,12 +208,14 @@ def test_setup_without_default_agent_directs_user_to_builtin_agents(
     )
 
 
+@pytest.mark.parametrize("marker", ["CODEX_CI", "CLAUDE_CODE_CHILD_SESSION"])
 def test_setup_launches_builtin_codex_without_toml_configuration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker: str
 ) -> None:
     from tests.conftest import init_git_repo
 
     launches: list[tuple[object, ...]] = []
+    monkeypatch.setenv(marker, "1")
     monkeypatch.setattr(agent_module, "launch_interactive_agent", lambda *args: launches.append(args) or 0)
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')
     monkeypatch.chdir(tmp_path)
@@ -221,3 +223,58 @@ def test_setup_launches_builtin_codex_without_toml_configuration(
     assert main(["setup", "--agent", "codex"]) == 0
 
     assert launches[0][0] == ("codex",)
+
+
+@pytest.mark.parametrize("prefix", [[], ["create"]])
+@pytest.mark.parametrize(
+    ("marker", "value", "options", "launch_expected"),
+    [
+        ("CODEX_CI", "1", [], False),
+        ("CLAUDE_CODE_CHILD_SESSION", "1", [], False),
+        ("CODEX_CI", "", [], True),
+        ("CODEX_CI", "0", [], True),
+        ("CLAUDE_CODE_CHILD_SESSION", "0", [], True),
+        ("CLAUDECODE", "1", [], True),
+        ("CODEX_CI", "1", ["--agent", "claude"], True),
+        ("CLAUDE_CODE_CHILD_SESSION", "1", ["--agent", "claude", "--prompt", "do it"], True),
+        ("CODEX_CI", "1", ["--no-agent"], False),
+    ],
+)
+def test_create_infers_no_agent_only_for_agent_children(
+    tmp_path, monkeypatch, capsys, prefix, marker, value, options, launch_expected
+) -> None:
+    from tests.conftest import init_git_repo
+
+    launches = []
+    monkeypatch.setattr(agent_module, "launch_interactive_agent", lambda *args: launches.append(args) or 0)
+    monkeypatch.setenv(marker, value)
+    init_git_repo(
+        tmp_path,
+        '[project]\nname = "demo"\n\n[tool.new-feature]\ndefault_agent = "codex"\n',
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert main([*prefix, "my-feature", *options]) == 0
+
+    worktree = tmp_path / ".worktrees/my-feature"
+    assert worktree.is_dir()
+    assert bool(launches) is launch_expected
+    if launch_expected:
+        assert launches[0][0] == (("claude",) if "--agent" in options else ("codex",))
+    else:
+        assert capsys.readouterr().out == f"Worktree ready: {worktree}\nNext: cd -- {worktree}\n"
+
+
+def test_agent_session_prompt_requires_explicit_agent(tmp_path, monkeypatch, capsys) -> None:
+    from tests.conftest import init_git_repo
+
+    monkeypatch.setenv("CODEX_CI", "1")
+    init_git_repo(
+        tmp_path,
+        '[project]\nname = "demo"\n\n[tool.new-feature]\ndefault_agent = "codex"\n',
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["my-feature", "--prompt", "do it"]) == 1
+    assert "--prompt requires an agent" in capsys.readouterr().err
+    assert not (tmp_path / ".worktrees/my-feature").exists()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse  # noqa: TC003 - package-wide beartype needs annotation types at runtime
+import os
 import sys
 from contextlib import nullcontext
 from pathlib import Path
@@ -238,6 +239,11 @@ def _resolve_create_agent(
     no_agent: bool,
     agent_options: agent_module.AgentLaunchOptions,
 ) -> tuple[str, ...] | None:
+    # NOTE: README.md documents session detection and explicit --agent precedence.
+    if agent_options.agent_override is None and (
+        os.environ.get("CODEX_CI") == "1" or os.environ.get("CLAUDE_CODE_CHILD_SESSION") == "1"
+    ):
+        no_agent = True
     agent_command = None if no_agent else agent_module.resolve_agent(config, agent_options.agent_override)
     if agent_command is None and agent_options.prompt_override is not None:
         raise agent_module.agent_required_error(prompt_requested=True)

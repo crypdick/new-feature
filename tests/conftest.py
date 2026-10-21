@@ -25,6 +25,8 @@ def init_git_repo(path: Path, pyproject: str | None = None) -> None:
 
 @pytest.fixture(autouse=True)
 def clean_git_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("CODEX_CI", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_CHILD_SESSION", raising=False)
     for key in os.environ:
         if key.startswith("GIT_"):
             monkeypatch.delenv(key)
