@@ -254,3 +254,29 @@ def test_post_check_removes_its_record_and_prunes_stale_records(tmp_path: Path) 
     assert len(list(records.iterdir())) == 1
     assert not should_block("target-shell-changes", event)
     assert not list(records.iterdir())
+
+
+def test_post_check_follows_cd_into_another_target_checkout(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    repo, elsewhere = tmp_path / "repo", tmp_path / "elsewhere"
+    repo.mkdir()
+    elsewhere.mkdir()
+    init_git_repo(repo)
+    event = {**call_event(elsewhere, "toolu_a"), "command": f"cd {repo} && python3 edit.py"}
+    assert not should_block("target-branch", event)
+    assert len(list((repo / ".git/new-feature-shell-changes").iterdir())) == 1
+    (repo / "README.md").write_text("# changed after cd\n", encoding="utf-8")
+    assert should_block("target-shell-changes", event)
+
+
+def test_post_check_removes_its_record_after_a_branch_switch(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    records = tmp_path / ".git/new-feature-shell-changes"
+    event = call_event(tmp_path, "toolu_a")
+    assert not should_block("target-branch", event)
+    subprocess.run(["git", "checkout", "-q", "-b", "feature"], cwd=tmp_path, check=True)
+    assert not should_block("target-shell-changes", event)
+    assert not list(records.iterdir())

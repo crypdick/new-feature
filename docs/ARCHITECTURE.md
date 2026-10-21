@@ -82,8 +82,9 @@ Edit checks also cover common shell writes: output redirections, `tee`, in-place
 Guards recognize Git directory options and simple `cd` commands. They don't parse
 arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
 A post-command rule covers those: before each shell command on the target branch, the
-edit check records tracked changes in the checkout's Git directory, one record per
-harness `tool_use_id`. After the command,
+edit check records tracked changes in each checkout's Git directory, covering the
+current directory and literal `cd` targets, one record per harness `tool_use_id`. After
+the command,
 any tracked file that is newly changed, changed again, or deleted is reported to the
 agent. The command's effects remain; the report tells the agent to move the change into
 a feature worktree without discarding changes it didn't make. A concurrent command's

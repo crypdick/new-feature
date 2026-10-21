@@ -63,10 +63,10 @@ def _blocks_shell(name: str, command: str, *, cwd: Path, call_id: str | None) ->
         if blocks_target_edit(shell_write_targets(command, cwd=cwd), cwd=cwd):
             return True
         # The post-phase target-shell-changes rule compares against this record.
-        record_target_changes(cwd=cwd, call_id=call_id)
+        record_target_changes(command, cwd=cwd, call_id=call_id)
         return False
     if name == "target-shell-changes":
-        return target_changed_since_record(cwd=cwd, call_id=call_id)
+        return target_changed_since_record(command, cwd=cwd, call_id=call_id)
     return name == f"worktree-{parse_worktree_action(command)}"
 
 
