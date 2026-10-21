@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import re
 import shlex
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NewType
@@ -42,6 +44,7 @@ _SUDO_OPTIONS_WITH_VALUES = {
     "-u",
     "--user",
 }
+_STALE_RECORD_SECONDS = 24 * 60 * 60
 _REDIRECT_WRITES = {">", ">>", ">|", "&>", "&>>", "<>"}
 _REDIRECT_OPERATORS = _REDIRECT_WRITES | {"<", "<<", "<<<", ">&", "<&"}
 _FD_DUPLICATION = re.compile(r"\d+-?|-\Z")
@@ -81,18 +84,26 @@ def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
     return False
 
 
-def record_target_changes(*, cwd: Path) -> None:
+def record_target_changes(*, cwd: Path, call_id: str | None) -> None:
     """Remember tracked changes on the target branch before a shell command runs."""
-    snapshot = _target_change_snapshot(cwd)
-    if snapshot is not None:
-        path, changes = snapshot
-        path.write_text(json.dumps(changes), encoding="utf-8")
+    snapshot = _target_change_snapshot(cwd, call_id)
+    if snapshot is None:
+        return
+    path, changes = snapshot
+    if call_id is not None:
+        path.parent.mkdir(exist_ok=True)
+        # Another rule can block a call after this record, so its post check never runs.
+        cutoff = time.time() - _STALE_RECORD_SECONDS
+        for record in path.parent.iterdir():
+            if record.stat().st_mtime < cutoff:
+                record.unlink(missing_ok=True)
+    path.write_text(json.dumps(changes), encoding="utf-8")
 
 
-def target_changed_since_record(*, cwd: Path) -> bool:
-    """Check whether tracked target-branch files changed since the last record."""
+def target_changed_since_record(*, cwd: Path, call_id: str | None) -> bool:
+    """Check whether tracked target-branch files changed since this call's record."""
     # NOTE: docs/ARCHITECTURE.md's Agent guards describe this post-command check.
-    snapshot = _target_change_snapshot(cwd)
+    snapshot = _target_change_snapshot(cwd, call_id)
     if snapshot is None:
         return False
     path, changes = snapshot
@@ -100,12 +111,16 @@ def target_changed_since_record(*, cwd: Path) -> bool:
         recorded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         recorded = {}
-    path.write_text(json.dumps(changes), encoding="utf-8")
+    if call_id is None:
+        path.write_text(json.dumps(changes), encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
     return any(name not in recorded or recorded[name] != signature for name, signature in changes.items())
 
 
-def _target_change_snapshot(cwd: Path) -> tuple[Path, dict[str, list[int] | None]] | None:
-    # NOTE: one record per checkout; concurrent shell calls in one checkout can mask each other.
+def _target_change_snapshot(
+    cwd: Path, call_id: str | None
+) -> tuple[Path, dict[str, list[int] | None]] | None:
     context = _git_context_for(cwd, cwd=cwd)
     if context is None or context.branch != context.target_branch:
         return None
@@ -121,7 +136,11 @@ def _target_change_snapshot(cwd: Path) -> tuple[Path, dict[str, list[int] | None
             changes[name] = None
         else:
             changes[name] = [status.st_mtime_ns, status.st_size]
-    return Path(git_dir) / "new-feature-shell-changes.json", changes
+    if call_id is None:
+        # NOTE: without a harness call ID, concurrent shell calls share one record.
+        return Path(git_dir) / "new-feature-shell-changes.json", changes
+    name = hashlib.sha256(call_id.encode()).hexdigest()
+    return Path(git_dir) / "new-feature-shell-changes" / f"{name}.json", changes
 
 
 def parse_worktree_action(command: str) -> WorktreeAction | None:
