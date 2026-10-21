@@ -11,10 +11,13 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NewType
+from typing import TYPE_CHECKING, NewType
 
 from new_feature.config import load_project_config
 from new_feature.git import git_environment
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 BranchName = NewType("BranchName", str)
 WorktreeAction = NewType("WorktreeAction", str)
@@ -84,49 +87,72 @@ def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
     return False
 
 
-def record_target_changes(*, cwd: Path, call_id: str | None) -> None:
+def record_target_changes(command: str, *, cwd: Path, call_id: str | None) -> None:
     """Remember tracked changes on the target branch before a shell command runs."""
-    snapshot = _target_change_snapshot(cwd, call_id)
-    if snapshot is None:
-        return
-    path, changes = snapshot
-    if call_id is not None:
-        path.parent.mkdir(exist_ok=True)
-        # Another rule can block a call after this record, so its post check never runs.
-        cutoff = time.time() - _STALE_RECORD_SECONDS
-        for record in path.parent.iterdir():
-            if record.stat().st_mtime < cutoff:
-                record.unlink(missing_ok=True)
-    path.write_text(json.dumps(changes), encoding="utf-8")
+    for git_dir, directory in _reached_checkouts(command, cwd=cwd).items():
+        changes = _target_changes(directory)
+        if changes is None:
+            continue
+        path = _record_path(git_dir, call_id)
+        if call_id is not None:
+            path.parent.mkdir(exist_ok=True)
+            # Another rule can block a call after this record, so its post check never runs.
+            cutoff = time.time() - _STALE_RECORD_SECONDS
+            for record in path.parent.iterdir():
+                if record.stat().st_mtime < cutoff:
+                    record.unlink(missing_ok=True)
+        path.write_text(json.dumps(changes), encoding="utf-8")
 
 
-def target_changed_since_record(*, cwd: Path, call_id: str | None) -> bool:
+def target_changed_since_record(command: str, *, cwd: Path, call_id: str | None) -> bool:
     """Check whether tracked target-branch files changed since this call's record."""
     # NOTE: docs/ARCHITECTURE.md's Agent guards describe this post-command check.
-    snapshot = _target_change_snapshot(cwd, call_id)
-    if snapshot is None:
-        return False
-    path, changes = snapshot
-    try:
-        recorded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        recorded = {}
+    changed = False
+    for git_dir, directory in _reached_checkouts(command, cwd=cwd).items():
+        path = _record_path(git_dir, call_id)
+        try:
+            recorded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            recorded = {}
+        if call_id is not None:
+            path.unlink(missing_ok=True)
+        changes = _target_changes(directory)
+        if changes is None:
+            continue
+        if call_id is None:
+            path.write_text(json.dumps(changes), encoding="utf-8")
+        changed |= any(
+            name not in recorded or recorded[name] != signature for name, signature in changes.items()
+        )
+    return changed
+
+
+def _reached_checkouts(command: str, *, cwd: Path) -> dict[Path, Path]:
+    """Map the git dir of each checkout the command can reach to a directory inside it."""
+    checkouts: dict[Path, Path] = {}
+    directories = [cwd, *(directory for directory, _ in _commands_with_cwd(command, cwd=cwd))]
+    for directory in directories:
+        probe = _existing_probe_path(directory, cwd=cwd)
+        git_dir = _git_output(probe, "rev-parse", "--absolute-git-dir")
+        if git_dir is not None:
+            checkouts.setdefault(Path(git_dir), probe)
+    return checkouts
+
+
+def _record_path(git_dir: Path, call_id: str | None) -> Path:
     if call_id is None:
-        path.write_text(json.dumps(changes), encoding="utf-8")
-    else:
-        path.unlink(missing_ok=True)
-    return any(name not in recorded or recorded[name] != signature for name, signature in changes.items())
+        # NOTE: without a harness call ID, concurrent shell calls share one record.
+        return git_dir / "new-feature-shell-changes.json"
+    name = hashlib.sha256(call_id.encode()).hexdigest()
+    return git_dir / "new-feature-shell-changes" / f"{name}.json"
 
 
-def _target_change_snapshot(
-    cwd: Path, call_id: str | None
-) -> tuple[Path, dict[str, list[int] | None]] | None:
-    context = _git_context_for(cwd, cwd=cwd)
+def _target_changes(directory: Path) -> dict[str, list[int] | None] | None:
+    context = _git_context_for(directory, cwd=directory)
     if context is None or context.branch != context.target_branch:
         return None
-    git_dir = _git_output(context.root, "rev-parse", "--absolute-git-dir")
     names = _git_output(context.root, "diff", "HEAD", "--name-only", "--no-renames", "-z")
-    if git_dir is None or names is None:  # pragma: no cover - context proved a repository with history
+    if names is None:  # pragma: no cover - context proved a repository with history
         return None
     changes: dict[str, list[int] | None] = {}
     for name in filter(None, names.split("\0")):
@@ -136,11 +162,7 @@ def _target_change_snapshot(
             changes[name] = None
         else:
             changes[name] = [status.st_mtime_ns, status.st_size]
-    if call_id is None:
-        # NOTE: without a harness call ID, concurrent shell calls share one record.
-        return Path(git_dir) / "new-feature-shell-changes.json", changes
-    name = hashlib.sha256(call_id.encode()).hexdigest()
-    return Path(git_dir) / "new-feature-shell-changes" / f"{name}.json", changes
+    return changes
 
 
 def parse_worktree_action(command: str) -> WorktreeAction | None:
@@ -157,10 +179,7 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
 
 def blocks_target_merge(command: str, *, cwd: Path) -> bool:
     """Reject starting a direct merge on the configured target branch."""
-    for shell_command in _parse_shell_commands(command):
-        if shell_command[0] == "cd" and len(shell_command) in {2, 3}:
-            cwd = cwd / Path(shell_command[-1]).expanduser()
-            continue
+    for directory, shell_command in _commands_with_cwd(command, cwd=cwd):
         arguments = _git_arguments(shell_command)
         if arguments is None:
             continue
@@ -170,7 +189,7 @@ def blocks_target_merge(command: str, *, cwd: Path) -> bool:
         # NOTE: docs/ARCHITECTURE.md's Agent guards permit recovery on the target branch.
         if arguments[index + 1 :] in (["--continue"], ["--abort"], ["--quit"], ["--help"], ["-h"]):
             continue
-        context = _git_context_for(cwd, cwd=cwd, git_options=tuple(arguments[:index]))
+        context = _git_context_for(directory, cwd=directory, git_options=tuple(arguments[:index]))
         if context is not None and context.branch == context.target_branch:
             return True
     return False
@@ -180,13 +199,19 @@ def shell_write_targets(command: str, *, cwd: Path) -> tuple[Path, ...]:
     """Return files that common shell redirections and file utilities would write."""
     # NOTE: docs/ARCHITECTURE.md's Agent guards list the recognized shell writes.
     targets: list[Path] = []
+    for directory, shell_command in _commands_with_cwd(command, cwd=cwd):
+        targets.extend(directory / Path(word).expanduser() for word in _redirect_targets(shell_command))
+        targets.extend(directory / Path(word).expanduser() for word in _utility_targets(shell_command))
+    return tuple(targets)
+
+
+def _commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[str]]]:
+    """Yield each non-cd shell command with the directory literal cd commands left it in."""
     for shell_command in _parse_shell_commands(command):
         if shell_command[0] == "cd" and len(shell_command) in {2, 3}:
             cwd = cwd / Path(shell_command[-1]).expanduser()
             continue
-        targets.extend(cwd / Path(word).expanduser() for word in _redirect_targets(shell_command))
-        targets.extend(cwd / Path(word).expanduser() for word in _utility_targets(shell_command))
-    return tuple(targets)
+        yield cwd, shell_command
 
 
 def _redirect_targets(command: list[str]) -> list[str]:
