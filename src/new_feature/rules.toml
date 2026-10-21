@@ -13,3 +13,8 @@ checker = ["new-feature", "check-rule", "target-branch"]
 [[rules]]
 id = "target-merge"
 checker = ["new-feature", "check-rule", "target-merge"]
+
+[[rules]]
+id = "target-shell-changes"
+checker = ["new-feature", "check-rule", "target-shell-changes"]
+phase = "post"

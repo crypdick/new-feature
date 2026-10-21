@@ -79,8 +79,15 @@ Guards enforce these policies through i-insist:
 
 Edit checks also cover common shell writes: output redirections, `tee`, in-place
 `sed` and `perl`, `cp`, `install`, `ln`, `mv`, `rm`, `touch`, and `truncate`.
-Guards recognize Git directory options and simple `cd` commands. They don't inspect
+Guards recognize Git directory options and simple `cd` commands. They don't parse
 arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
+A post-command rule covers those: before each shell command on the target branch, the
+edit check records tracked changes in the checkout's Git directory. After the command,
+any tracked file that is newly changed, changed again, or deleted is reported to the
+agent. The command's effects remain; the report tells the agent to move the change into
+a feature worktree without discarding changes it didn't make. Concurrent shell commands
+in one checkout share that record, so one command can mask another's changes. Post rules
+require i-insist 0.5.0 or later.
 
 Installation sets up i-insist from PyPI, verifies enabled hooks, and atomically
 replaces the generated rule registration for new-feature. Checkers return JSON `null` to allow

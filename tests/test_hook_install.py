@@ -21,10 +21,11 @@ def test_upgrade_replaces_owned_registration(tmp_path):
     assert {rule["id"] for rule in rules} == {
         "target-branch",
         "target-merge",
+        "target-shell-changes",
         "worktree-add",
         "worktree-remove",
     }
-    assert all(set(rule) == {"id", "checker"} for rule in rules)
+    assert all(set(rule) <= {"id", "checker", "phase"} for rule in rules)
     assert path.stat().st_mode & 0o777 == 0o640
     upgraded = path.read_bytes()
     install_rules(tmp_path)
@@ -39,7 +40,7 @@ def test_upgrade_replaces_invalid_owned_registration(tmp_path, original):
     other = path.with_name("other.toml")
     other.write_text("# other provider")
     install_rules(tmp_path)
-    assert len(tomllib.loads(path.read_text())["rules"]) == 4
+    assert len(tomllib.loads(path.read_text())["rules"]) == 5
     assert other.read_text() == "# other provider"
 
 

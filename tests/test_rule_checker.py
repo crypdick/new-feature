@@ -82,7 +82,14 @@ def test_install_rules_restores_provider_config(tmp_path, monkeypatch):
     assert cli.main(["install-rules"]) == 0
     path = tmp_path / ".i-insist/new-feature.toml"
     rules = tomllib.loads(path.read_text())["rules"]
-    assert {r["id"] for r in rules} == {"worktree-add", "worktree-remove", "target-branch", "target-merge"}
+    assert {r["id"] for r in rules} == {
+        "worktree-add",
+        "worktree-remove",
+        "target-branch",
+        "target-merge",
+        "target-shell-changes",
+    }
+    assert next(r for r in rules if r["id"] == "target-shell-changes")["phase"] == "post"
     assert all(r["checker"][:2] == ["new-feature", "check-rule"] for r in rules)
     original = path.read_bytes()
     path.write_text(path.read_text().replace('id = "target-branch"', 'id = "target-branch"\nenabled = false'))
