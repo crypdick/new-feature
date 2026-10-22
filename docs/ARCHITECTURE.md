@@ -89,6 +89,10 @@ Edit checks also cover common shell writes: output redirections, `tee`, in-place
 `sed` and `perl`, `cp`, `install`, `ln`, `mv`, `rm`, `touch`, and `truncate`.
 Guards recognize Git directory options and simple `cd` commands. They don't parse
 arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
+Heredoc bodies are input data, so their text is excluded from command checks.
+Quoted delimiters, multiple heredocs, and `<<-` tab stripping are recognized;
+redirections on the header and commands after the closing delimiter remain checked.
+Command substitutions inside expanding heredocs fall under the post-command check.
 A post-command rule covers those: before each shell command on the target branch, the
 edit check records tracked changes in each checkout's Git directory, covering the
 current directory and literal `cd` targets, one record per harness `tool_use_id`. After

@@ -25,6 +25,12 @@ WorktreeAction = NewType("WorktreeAction", str)
 _WORKTREE_ACTIONS = {"add", "remove"}
 _SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", ""}
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*\Z")
+# Preserve quoting here so a literal '<<' cannot start a heredoc. shlex removes it.
+_HEREDOC_TOKENS = re.compile(
+    r"\#[^\n]*|"
+    r"""(?:[^\s;&|()<>'"\\]+|\\[\s\S]|'[^']*'|"(?:\\[\s\S]|[^"\\])*")+|"""
+    r"<<-|[;&|()<>]+"
+)
 _COMMAND_WRAPPERS = {"command", "exec"}
 _ENV_OPTIONS_WITH_VALUES = {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"}
 _SUDO_OPTIONS_WITH_VALUES = {
@@ -282,13 +288,37 @@ def _operands(arguments: list[str], *, options_with_values: set[str]) -> list[st
 
 
 def _parse_shell_commands(command: str) -> list[list[str]]:
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>\n")
-        lexer.whitespace = " \t\r"
-        lexer.whitespace_split = True
-        return _shell_commands(list(lexer))
-    except ValueError:
-        return []
+    tokens: list[str] = []
+    heredocs: list[tuple[str, bool]] = []
+    header = ""
+    for line in command.splitlines(keepends=True):
+        if heredocs:
+            delimiter, strip_tabs = heredocs[0]
+            candidate = line.lstrip("\t") if strip_tabs else line
+            if candidate.removesuffix("\n") == delimiter:
+                heredocs.pop(0)
+            continue
+        header += line
+        if header.endswith("\\\n"):
+            continue
+        try:
+            lexer = shlex.shlex(header, posix=True, punctuation_chars=";&|()<>\n")
+            lexer.whitespace = " \t\r"
+            lexer.whitespace_split = True
+            words = list(lexer)
+        except ValueError:
+            # A quoted shell argument may span physical lines.
+            continue
+        tokens.extend(words)
+        # NOTE: docs/ARCHITECTURE.md excludes heredoc data from shell command checks.
+        raw_words = _HEREDOC_TOKENS.findall(header)
+        heredocs.extend(
+            (shlex.split(target, comments=False)[0], operator == "<<-")
+            for operator, target in itertools.pairwise(raw_words)
+            if operator in {"<<", "<<-"}
+        )
+        header = ""
+    return [] if header else _shell_commands(tokens)
 
 
 def _shell_commands(tokens: list[str]) -> list[list[str]]:
