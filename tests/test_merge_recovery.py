@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import subprocess
-from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
 import pytest
 
 from new_feature import cli
-from new_feature.config import ProjectConfig
 from new_feature.errors import NewFeatureError
-from new_feature.manifest import FeatureRecord, Manifest
 from tests.conftest import init_git_repo
 
 if TYPE_CHECKING:
@@ -139,36 +136,16 @@ def test_merge_honors_no_commit_and_edit_options(tmp_path: Path, monkeypatch: py
 def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    record = FeatureRecord(
-        name="my-feature",
-        slug="my-feature",
-        branch="feature/my-feature",
-        worktree=".worktrees/my-feature",
-        target_branch="main",
-        status="active",
-        created_at="2026-07-10T12:00:00Z",
-        env={},
-    )
-    manifest = Manifest(features={"my_feature": record})
-    merged: list[str] = []
-    pushed: list[str] = []
+    from new_feature.manifest import load_manifest
 
-    monkeypatch.setattr(cli, "load_project_config", lambda _root: ProjectConfig(push=True))
-    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
-    monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
-    monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env, failure_log: None)
-    monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
-    monkeypatch.setattr(cli, "is_branch_merged", lambda _root, *, branch, target_branch: bool(merged))
-    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
-    monkeypatch.setattr(
-        cli,
-        "merge_feature_branch",
-        lambda _root, *, branch, target_branch, git_args=(): merged.append(branch),
-    )
-    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name, git_args=(): None)
-    monkeypatch.setattr(cli, "merge_in_progress", lambda _root: True)
-    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli, "resolve_revision", lambda _root, _ref: "target-before")
+    init_git_repo(tmp_path, "[tool.new-feature]\npush=true\n")
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["my-feature", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees/my-feature"
+    (worktree / "feature.txt").write_text("feature\n")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature"], cwd=worktree, check=True)
+    pushed = []
 
     def push(_root: Path, *, target_branch: str) -> None:
         pushed.append(target_branch)
@@ -176,14 +153,12 @@ def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
             raise NewFeatureError("push failed")
 
     monkeypatch.setattr(cli, "push_target", push)
-    monkeypatch.setattr(cli, "save_manifest", lambda _root, _manifest: None)
-
     with pytest.raises(NewFeatureError, match="push failed"):
         cli._merge(tmp_path, "my-feature")
-    assert record.status == "merged"
-
+    assert load_manifest(tmp_path).features["my_feature"].status == "merged"
+    merged = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path)
     assert cli._merge(tmp_path, "my-feature") == 0
-    assert merged == ["feature/my-feature"]
+    assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path) == merged
     assert pushed == ["main", "main"]
 
 
