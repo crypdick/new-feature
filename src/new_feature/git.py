@@ -4,9 +4,41 @@ from __future__ import annotations
 
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from new_feature.errors import NewFeatureError
+
+
+@dataclass(frozen=True)
+class CheckoutState:
+    """Git state whose identity bounds a managed merge's ownership."""
+
+    branch: str | None
+    head: str
+    merge_heads: tuple[str, ...]
+    tree: str
+    unstaged: str
+    untracked: str
+
+
+def checkout_state(root: Path) -> CheckoutState:
+    """Read exact commit, index, merge, and nonignored working-tree state."""
+    merge_head = Path(_git(root, "rev-parse", "--git-path", "MERGE_HEAD", capture=True).stdout.strip())
+    merge_head = root / merge_head
+    return CheckoutState(
+        branch=worktree_branch(root),
+        head=resolve_revision(root, "HEAD"),
+        merge_heads=tuple(merge_head.read_text().splitlines()) if merge_head.exists() else (),
+        tree=_git(root, "write-tree", capture=True).stdout.strip(),
+        unstaged=_git(root, "diff", "--no-ext-diff", "--binary", capture=True).stdout,
+        untracked=_git(root, "ls-files", "--others", "--exclude-standard", "-z", capture=True).stdout,
+    )
+
+
+def commit_parents(root: Path, revision: str) -> tuple[str, ...]:
+    """Return a commit's ordered parent identities."""
+    return tuple(_git(root, "show", "-s", "--format=%P", revision, capture=True).stdout.split())
 
 
 def repo_root(cwd: Path) -> Path:
@@ -220,7 +252,6 @@ def merge_in_progress(root: Path) -> bool:
 def rollback_merge(root: Path, *, revision: str) -> None:
     """Restore a checkout that was clean before a managed merge."""
     _git(root, "reset", "--hard", revision)
-    _git(root, "clean", "-fd")
     rollback_failed = [
         resolve_revision(root, "HEAD") != revision,
         merge_in_progress(root),

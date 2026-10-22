@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import signal
 import subprocess
-from contextlib import nullcontext
 from threading import Event, Thread
 from typing import TYPE_CHECKING
 
@@ -12,7 +11,7 @@ from new_feature import app, cli, git
 from new_feature.cli import main
 from new_feature.errors import NewFeatureError
 from new_feature.git import remove_worktree_and_branch
-from new_feature.manifest import FeatureRecord, Manifest, load_manifest
+from new_feature.manifest import load_manifest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -199,42 +198,29 @@ def test_merge_termination_aborts_prepared_target_merge(
 
 
 def test_merge_start_failure_aborts_transaction(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    record = FeatureRecord(
-        name="demo",
-        slug="demo",
-        branch="feature/demo",
-        worktree=".worktrees/demo",
-        target_branch="main",
-        status="active",
-        created_at="now",
-    )
-    rolled_back: list[tuple[Path, str]] = []
-    monkeypatch.setattr(cli, "is_branch_merged", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
-    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
-    monkeypatch.setattr(cli, "load_manifest", lambda _root: Manifest(features={"demo": record}))
-    monkeypatch.setattr(cli, "run_commands", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli, "worktree_is_clean", lambda _path: True)
-    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda *_args, **_kwargs: None)
+    from new_feature import merge_transaction
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert main(["demo", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees/demo"
+    (worktree / "feature.txt").write_text("feature\n")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature"], cwd=worktree, check=True)
+    before = git.resolve_revision(tmp_path, "HEAD")
     monkeypatch.setattr(
         cli,
         "merge_feature_branch",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(NewFeatureError("conflict")),
     )
-    monkeypatch.setattr(cli, "resolve_revision", lambda *_args: "target-before")
-    monkeypatch.setattr(
-        cli,
-        "rollback_merge",
-        lambda root, *, revision: rolled_back.append((root, revision)),
-    )
-
     with pytest.raises(NewFeatureError, match="conflict"):
         cli._merge(tmp_path, "demo")
-    assert rolled_back == [(tmp_path, "target-before")]
+    assert git.resolve_revision(tmp_path, "HEAD") == before
+    assert git.worktree_is_clean(tmp_path)
 
     monkeypatch.setattr(
-        cli,
+        merge_transaction,
         "rollback_merge",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(NewFeatureError("rollback failed")),
     )
@@ -242,7 +228,7 @@ def test_merge_start_failure_aborts_transaction(tmp_path: Path, monkeypatch: pyt
         cli._merge(tmp_path, "demo")
 
 
-def test_failed_post_merge_removes_generated_target_files(
+def test_failed_post_merge_preserves_unowned_target_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from tests.conftest import init_git_repo
@@ -262,10 +248,10 @@ def test_failed_post_merge_removes_generated_target_files(
     assert main(["merge", "my-feature"]) == 1
 
     assert git.resolve_revision(tmp_path, "HEAD") == target_before
-    assert not git.merge_in_progress(tmp_path)
-    assert not (tmp_path / "feature.txt").exists()
-    assert not (tmp_path / "leaked.txt").exists()
-    assert git.worktree_is_clean(tmp_path)
+    assert git.merge_in_progress(tmp_path)
+    assert (tmp_path / "feature.txt").read_text() == "feature\n"
+    assert (tmp_path / "leaked.txt").exists()
+    assert not git.worktree_is_clean(tmp_path)
     assert load_manifest(tmp_path).features["my_feature"].status == "active"
 
 
@@ -309,64 +295,36 @@ push = false
 def test_concurrent_merges_serialize_target_checkout_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    manifest = Manifest(
-        features={
-            "first": FeatureRecord(
-                name="first",
-                slug="first",
-                branch="first",
-                worktree=".worktrees/first",
-                target_branch="main",
-                status="active",
-                created_at="2026-07-26T00:00:00Z",
-            ),
-            "second": FeatureRecord(
-                name="second",
-                slug="second",
-                branch="second",
-                worktree=".worktrees/second",
-                target_branch="main",
-                status="active",
-                created_at="2026-07-26T00:00:00Z",
-            ),
-        }
-    )
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    for name in ("first", "second"):
+        assert main([name, "--no-agent"]) == 0
+        worktree = tmp_path / ".worktrees" / name
+        (worktree / f"{name}.txt").write_text(name)
+        subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+        subprocess.run(["git", "commit", "-m", name], cwd=worktree, check=True)
     first_started = Event()
     release_first = Event()
     second_started = Event()
-    mutations: list[str] = []
-    results: list[int] = []
+    results = []
+    checks = []
 
-    monkeypatch.setattr(cli, "is_branch_merged", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
-    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
-    monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
-    monkeypatch.setattr(cli, "save_manifest", lambda _root, _manifest: None)
-    monkeypatch.setattr(cli, "run_commands", lambda _commands, *, cwd, env, failure_log: None)
-    monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
-    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
-    monkeypatch.setattr(cli, "commit_merge", lambda _root, *, name, git_args=(): None)
-    monkeypatch.setattr(cli, "merge_in_progress", lambda _root: True)
-    monkeypatch.setattr(cli, "resolve_revision", lambda _root, _ref: "target-before")
-
-    def begin_merge(_root: Path, *, branch: str, target_branch: str, git_args: tuple[str, ...]) -> None:
-        assert target_branch == "main"
-        assert not git_args
-        mutations.append(branch)
-        if branch == "first":
+    def gate(_commands, *, cwd, env, **_kwargs):
+        if cwd != tmp_path:
+            return
+        name = env["NEW_FEATURE_NAME"]
+        checks.append(name)
+        if name == "first":
             first_started.set()
             assert release_first.wait(timeout=5)
         else:
             second_started.set()
 
-    monkeypatch.setattr(cli, "merge_feature_branch", begin_merge)
-
-    def merge(name: str) -> None:
-        results.append(cli._merge(tmp_path, name))
-
-    first = Thread(target=merge, args=("first",))
-    second = Thread(target=merge, args=("second",))
+    monkeypatch.setattr(cli, "run_commands", gate)
+    first = Thread(target=lambda: results.append(cli._merge(tmp_path, "first")))
+    second = Thread(target=lambda: results.append(cli._merge(tmp_path, "second")))
     first.start()
     assert first_started.wait(timeout=5)
     second.start()
@@ -374,11 +332,12 @@ def test_concurrent_merges_serialize_target_checkout_mutation(
     release_first.set()
     first.join(timeout=5)
     second.join(timeout=5)
-
     assert not first.is_alive()
     assert not second.is_alive()
-    assert mutations == ["first", "second"]
+    assert checks == ["first", "second"]
     assert results == [0, 0]
+    assert (tmp_path / "first.txt").read_text() == "first"
+    assert (tmp_path / "second.txt").read_text() == "second"
 
 
 def test_teardown_reports_a_missing_worktree(

@@ -158,8 +158,11 @@ the feature.
 The `new-feature merge NAME` command requires clean feature and target checkouts
 and refuses merge conflicts. Incoming tracked paths are checked for collisions with existing local paths,
 including ignored files in the target checkout. `--include-untracked` permits local files in the feature
-worktree while still requiring committed changes to tracked files. Failed merges attempt to restore the target checkout
-and remove non-ignored untracked files created there. Rollback doesn't undo
+worktree while still requiring committed changes to tracked files. Failed merges restore the target checkout only while Git state still matches the
+tool-owned merge. Intervening commits, branch changes, edits, or new non-ignored
+files stop automatic recovery and remain intact for manual review. An exact
+merge commit completed during checks is accepted without another commit.
+Rollback doesn't undo
 external effects such as database changes.
 
 Pass additional arguments after `NAME` to `git merge`, for example

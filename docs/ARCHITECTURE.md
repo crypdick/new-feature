@@ -35,7 +35,15 @@ Teardown preview takes no locks and mutates no state; its snapshot can change be
 a real teardown.
 
 Merge selects the target checkout before capturing the revision for rollback. Failures
-during merge, post-merge checks, commit, or bookkeeping trigger restoration. Push happens
+during merge, post-merge checks, commit, or bookkeeping trigger restoration only when
+HEAD, branch, MERGE_HEAD, index tree, tracked working-tree diff, untracked paths, and
+the feature tip still match the last tool-owned state. Uncertain ownership preserves
+the checkout for manual recovery; no blanket `git clean` runs. Post-merge checks
+may finish the exact prepared merge (same ordered parents and tree); unrelated
+commits or edits detected at these boundaries are never adopted. The target lock
+serializes cooperating `new-feature` operations; it cannot lock out manual Git or
+file edits between verification and a subsequent Git command. Keep external
+writers out of the target checkout during merge. Push happens
 outside that scope, so push failure retains the local merge.
 
 Git ancestry determines integration. The manifest's `merged` status doesn't hide later

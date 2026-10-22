@@ -32,8 +32,6 @@ from new_feature.git import (
     pull_target,
     push_target,
     repo_root,
-    resolve_revision,
-    rollback_merge,
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
@@ -49,6 +47,7 @@ from new_feature.manifest import (
     save_manifest,
     target_merge_lock,
 )
+from new_feature.merge_transaction import MergeTransaction
 from new_feature.rule_checker import main as check_rule
 from new_feature.slug import feature_key, slugify
 from new_feature.teardown import teardown
@@ -275,10 +274,10 @@ def _record_status(root: Path, key: str, *, status: FeatureStatus) -> FeatureRec
 def _commit_feature_merge(
     root: Path,
     config: ProjectConfig,
-    key: str,
     record: FeatureRecord,
     *,
     git_args: tuple[str, ...],
+    transaction: MergeTransaction,
 ) -> FeatureRecord:
     if not is_branch_merged(root, branch=record.branch, target_branch=record.target_branch):
         merge_feature_branch(
@@ -293,15 +292,17 @@ def _commit_feature_merge(
             root, branch=record.branch, target_branch=record.target_branch
         ):
             raise NewFeatureError("git merge did not integrate the feature branch")
+        transaction.prepared()
         run_commands(
             config.post_merge,
             cwd=root,
             env=record.env,
             failure_log=merge_failure_log(root, record.slug, phase="post-merge"),
         )
-        if pending_commit:
+        if transaction.pending_commit():
             commit_merge(root, name=record.name, git_args=git_args)
-    return _record_status(root, key, status="merged")
+            transaction.committed()
+    return _record_status(root, feature_key(record.slug), status="merged")
 
 
 def _merge_target(
@@ -326,12 +327,12 @@ def _merge_target(
             validate_local_paths(root, root / record.worktree, local_files, tracked)
         # NOTE: docs/ARCHITECTURE.md requires target selection before rollback ownership.
         checkout_target(root, target_branch=record.target_branch)
-        target_revision = resolve_revision(root, "HEAD")
+        transaction = MergeTransaction(root, record.branch)
         try:
-            record = _commit_feature_merge(root, config, feature_key(record.slug), record, git_args=git_args)
+            record = _commit_feature_merge(root, config, record, git_args=git_args, transaction=transaction)
         except BaseException as merge_error:
             try:
-                rollback_merge(root, revision=target_revision)
+                transaction.rollback()
             except NewFeatureError as rollback_error:
                 raise NewFeatureError(
                     f"merge failed and the target checkout could not be restored: {rollback_error}"
