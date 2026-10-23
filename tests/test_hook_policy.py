@@ -168,6 +168,41 @@ def test_policy_allows_shell_writes_on_feature_branch(tmp_path: Path) -> None:
     assert not shell_blocked("sed -i s/demo/x/ README.md", cwd=tmp_path)
 
 
+@pytest.mark.parametrize("destination", ["$W/README.md", '"${W}/README.md"'])
+def test_policy_allows_copy_to_variable_worktree_then_restore(tmp_path: Path, destination: str) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    worktree = tmp_path / ".worktrees/replica-recovery"
+    subprocess.run(
+        ["git", "worktree", "add", "-b", "replica-recovery", str(worktree)], cwd=tmp_path, check=True
+    )
+    (tmp_path / "README.md").write_text("recovered training code\n", encoding="utf-8")
+    command = (
+        f"W=.worktrees/replica-recovery && cp README.md {destination} "
+        "&& git restore README.md && git status --short && git -C $W diff --stat"
+    )
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": command}
+    assert not should_block("target-branch", event)
+    subprocess.run(["sh", "-c", command], cwd=tmp_path, check=True)
+    assert (worktree / "README.md").read_text() == "recovered training code\n"
+    assert (tmp_path / "README.md").read_text() == "# demo\n"
+    assert not should_block("target-shell-changes", event)
+
+
+@pytest.mark.parametrize("command", ["P=README.md; echo changed > $P", "P=README.md; cp .gitignore ${P}"])
+def test_post_check_flags_writes_through_variable_paths(tmp_path: Path, command: str) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("changed\n", encoding="utf-8")
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": command}
+    assert not should_block("target-branch", event)
+    subprocess.run(["sh", "-c", command], cwd=tmp_path, check=True)
+    assert should_block("target-shell-changes", event)
+    assert shell_blocked(f"{command}; touch README.md", cwd=tmp_path)
+
+
 def shell_changed(command: str, *, cwd: Path) -> bool:
     event = {"kind": "shell", "cwd": str(cwd), "command": command}
     assert not should_block("target-branch", event)

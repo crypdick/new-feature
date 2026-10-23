@@ -208,7 +208,9 @@ def shell_write_targets(command: str, *, cwd: Path) -> tuple[Path, ...]:
     for directory, shell_command in _commands_with_cwd(command, cwd=cwd):
         targets.extend(directory / Path(word).expanduser() for word in _redirect_targets(shell_command))
         targets.extend(directory / Path(word).expanduser() for word in _utility_targets(shell_command))
-    return tuple(targets)
+    # NOTE: docs/ARCHITECTURE.md defers variable paths to the post-command check;
+    # shlex removes quoting, so even quoted dollar signs cannot be resolved here.
+    return tuple(target for target in targets if "$" not in str(target))
 
 
 def _commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[str]]]:
