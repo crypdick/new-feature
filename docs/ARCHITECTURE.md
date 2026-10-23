@@ -89,6 +89,10 @@ Edit checks also cover common shell writes: output redirections, `tee`, in-place
 `sed` and `perl`, `cp`, `install`, `ln`, `mv`, `rm`, `touch`, and `truncate`.
 Guards recognize Git directory options and simple `cd` commands. They don't parse
 arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
+Paths containing dollar signs are deferred to the post-command check rather than
+treated as literal paths in the current checkout. This lets commands copy changes
+into a worktree through `$W` and then run `git restore` in the target checkout.
+Quoting is removed during parsing, so literal dollar signs are deferred too.
 Heredoc bodies are input data, so their text is excluded from command checks.
 Quoted delimiters, multiple heredocs, and `<<-` tab stripping are recognized;
 redirections on the header and commands after the closing delimiter remain checked.
