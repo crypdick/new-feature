@@ -3,7 +3,11 @@
 The Python package lives in `src/new_feature/`. Start with these modules:
 
 - `app.py` and `cli_parser.py`: entry point, signals, and argument parsing.
-- `cli.py`: lifecycle dispatch, creation, and merge workflows.
+- `cli.py`: lifecycle dispatch and merge workflows.
+- `creation.py`: creation, inert branch import, explicit bootstrap, and creation JSON.
+- `navigation.py` and `changes.py`: path lookup, shell completion, and guarded change snapshots.
+- `prune.py`: batch cleanup through the normal teardown lifecycle.
+- `output.py`: stdout isolation for machine-readable mutation results.
 - `inspection.py`: human and versioned JSON inspection and repair reports.
 - `teardown.py` and `processes.py`: teardown preview and Linux process protection.
 - `untracked.py`: local file transfer, disposable patterns, and preservation checks.
@@ -18,6 +22,18 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 
 Each original checkout owns its manifest. Creation records `initializing` before setup
 and `active` after success. Inspection reports unfinished setup as `setup-incomplete`.
+Existing-branch imports instead record `inert` until explicit bootstrap. Imports disable
+checkout hooks, filters, and filesystem monitors; configured setup and agents stay stopped.
+Failed bootstrap preserves the imported checkout for inspection and retry. The manifest
+records branch ownership separately: teardown and repair retain attached existing local
+branches, while branches created by the tool remain eligible for deletion.
+
+Each new feature receives a persisted generation token. Change inspection holds the same
+shared execution lock as `exec`, verifies the manifest and checkout identity before and
+after reading Git status, and rejects stale expected generations. Legacy records have no
+token; their JSON generation is null. This coordinates lifecycle operations without
+claiming an atomic snapshot against manual file edits. Batch pruning revalidates each
+feature under its operation lock and uses normal teardown; previews acquire no locks.
 Lifecycle commands resolve the current checkout through Git's worktree inventory and
 matching manifest paths and branches. One matching owner selects that checkout;
 multiple owners or a branch mismatch fail. Unreadable manifests fail for the current

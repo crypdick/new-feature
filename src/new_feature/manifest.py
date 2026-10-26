@@ -15,6 +15,7 @@ from filelock import FileLock, Timeout
 
 from new_feature.atomic_file import atomic_text_write
 from new_feature.errors import NewFeatureError
+from new_feature.lifecycle import now
 
 MANIFEST_DIR = ".new-feature"
 MANIFEST_FILE = "manifest.toml"
@@ -22,7 +23,7 @@ LOCK_FILE = "manifest.lock"
 TARGET_MERGE_LOCK_FILE = "target-merge.lock"
 FEATURE_LOCK_DIR = "features"
 MANIFEST_VERSION = 2
-type FeatureStatus = Literal["initializing", "active", "merged"]
+type FeatureStatus = Literal["initializing", "active", "merged", "inert"]
 type RawTable = dict[str, object]
 
 _FEATURE_FIELDS = {
@@ -36,6 +37,8 @@ _FEATURE_FIELDS = {
     "merged_at",
     "config_fingerprint",
     "env",
+    "owns_branch",
+    "generation",
 }
 
 
@@ -53,6 +56,8 @@ class FeatureRecord:
     merged_at: str = ""
     config_fingerprint: str = ""
     env: dict[str, str] = field(default_factory=dict)
+    owns_branch: bool = True
+    generation: str = ""
 
 
 @dataclass
@@ -162,6 +167,8 @@ def _parse_feature(key: str, value: object) -> FeatureRecord:
         merged_at=_optional_string(raw, "merged_at", entry=key),
         config_fingerprint=_optional_string(raw, "config_fingerprint", entry=key),
         env=_string_map(raw.get("env", {}), location=f"features.{key}.env"),
+        owns_branch=_owns_branch(raw.get("owns_branch", True)),
+        generation=_optional_string(raw, "generation", entry=key),
     )
 
 
@@ -186,9 +193,9 @@ def _optional_string(raw: RawTable, field_name: str, *, entry: str) -> str:
 
 
 def _feature_status(value: object, *, entry: str) -> FeatureStatus:
-    if value not in ("initializing", "active", "merged"):
+    if value not in ("initializing", "active", "merged", "inert"):
         raise NewFeatureError(
-            f"feature manifest entry {entry}.status must be active or merged or initializing"
+            f"feature manifest entry {entry}.status must be active or merged or initializing or inert"
         )
     return value
 
@@ -220,6 +227,8 @@ def save_manifest(repo_root: Path, manifest: Manifest) -> None:
                 "merged_at": record.merged_at,
                 "config_fingerprint": record.config_fingerprint,
                 "env": record.env,
+                "owns_branch": record.owns_branch,
+                "generation": record.generation,
             }
             for key, record in sorted(manifest.features.items())
         },
@@ -228,3 +237,22 @@ def save_manifest(repo_root: Path, manifest: Manifest) -> None:
         atomic_text_write(path, tomli_w.dumps(data), default_mode=0o600)
     except OSError as exc:
         raise NewFeatureError(f"cannot write feature manifest {path}: {exc}") from exc
+
+
+def _owns_branch(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise NewFeatureError("feature manifest owns_branch must be a boolean")
+    return value
+
+
+def record_feature_status(root: Path, key: str, *, status: FeatureStatus) -> FeatureRecord:
+    with manifest_lock(root):
+        manifest = load_manifest(root)
+        record = manifest.features.get(key)
+        if record is None:
+            raise NewFeatureError(f"unknown feature during status update: {key}")
+        record.status = status
+        if status == "merged":
+            record.merged_at = now()
+        save_manifest(root, manifest)
+        return record

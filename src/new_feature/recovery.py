@@ -29,11 +29,13 @@ def repair_feature(
     ):
         remove_worktree_and_branch(
             root,
-            branch=record.branch,
+            branch=record.branch if record.owns_branch else None,
             worktree=root / record.worktree,
             force=False,
             force_branch=True,
         )
         integration = "merged" if state.integration is IntegrationState.MERGED else "patch-equivalent"
+        if not record.owns_branch:
+            return f"removed missing worktree record {record.slug}; retained existing branch"
         return f"removed missing worktree and {integration} branch {record.slug}"
     return None

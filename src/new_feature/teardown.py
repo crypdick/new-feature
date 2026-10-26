@@ -30,26 +30,45 @@ class TeardownTarget:
     record: FeatureRecord | None
 
 
-def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> int:
-    """Preview or remove a feature, retaining resources when cleanup fails."""
+@dataclass(frozen=True)
+class TeardownPreview:
+    """Describe cleanup and preflight refusals without changing resources."""
+
+    target: TeardownTarget
+    config: ProjectConfig
+    refusals: list[str]
+
+
+def preview_teardown(root: Path, name: str, *, force: bool = False) -> TeardownPreview:
+    """Inspect teardown without locks, cleanup, or resource reservations."""
     config = load_project_config(root)
     target = _resolve_target(root, name, config)
-    refusals = [] if force else _refusals(root, target, config)
+    return TeardownPreview(target, config, [] if force else _refusals(root, target, config))
+
+
+def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> int:
+    """Preview or remove a feature, retaining resources when cleanup fails."""
+    preview = preview_teardown(root, name, force=force)
+    target, config, refusals = preview.target, preview.config, preview.refusals
     if dry_run:
         # NOTE: README.md documents lock-free preview, refusal exits, and cleanup uncertainty.
         _preview(target, config, refusals, force=force)
         return 1 if refusals else 0
     if refusals:
         raise NewFeatureError("; ".join(refusals))
-    if target.record is None:
-        sys.stderr.write("new-feature: unmanaged worktree; skipping configured teardown commands\n")
+    if target.record is None or target.record.status == "inert":
+        sys.stderr.write("new-feature: unmanaged or inert worktree; skipping configured teardown commands\n")
     else:
         warn_if_config_changed(config, target.record)
         run_commands(config.teardown, cwd=target.worktree, env=target.record.env)
     if not force:
         # NOTE: README.md documents process checks before cleanup and immediately before removal.
         require_no_worktree_processes(target.worktree)
-        if not worktree_is_clean(target.worktree, allow_untracked=True):
+        if not worktree_is_clean(
+            target.worktree,
+            allow_untracked=True,
+            inert=target.record is not None and target.record.status == "inert",
+        ):
             raise NewFeatureError(
                 "feature worktree has uncommitted tracked changes; pass --force to abandon them"
             )
@@ -58,7 +77,7 @@ def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> in
         os.chdir(root)
     remove_worktree_and_branch(
         root,
-        branch=target.branch,
+        branch=target.branch if target.record is None or target.record.owns_branch else None,
         worktree=target.worktree,
         # Git refuses ordinary untracked files even after their copies are verified.
         # NOTE: README.md documents safe deletion of preserved local files and excluded artifacts.
@@ -97,7 +116,11 @@ def _resolve_target(root: Path, name: str, config: ProjectConfig) -> TeardownTar
 
 def _refusals(root: Path, target: TeardownTarget, config: ProjectConfig) -> list[str]:
     refusals: list[str] = []
-    if not worktree_is_clean(target.worktree, allow_untracked=True):
+    if not worktree_is_clean(
+        target.worktree,
+        allow_untracked=True,
+        inert=target.record is not None and target.record.status == "inert",
+    ):
         refusals.append("feature worktree has uncommitted changes; pass --force to abandon them")
     if target.branch is None:
         refusals.append("unmanaged worktree is detached; pass --force to abandon it")
@@ -124,8 +147,8 @@ def _preview(target: TeardownTarget, config: ProjectConfig, refusals: list[str],
         f"Target: {target.target_branch}",
         f"Force: {str(force).lower()}",
     ]
-    if target.record is None:
-        lines.append("Cleanup: skip configured cleanup (unmanaged worktree)")
+    if target.record is None or target.record.status == "inert":
+        lines.append("Cleanup: skip configured cleanup (unmanaged or inert worktree)")
     elif config.teardown:
         lines.extend(f"Cleanup: {command}" for command in config.teardown)
         lines.append("Cleanup failure would stop removal even with --force.")
@@ -133,7 +156,8 @@ def _preview(target: TeardownTarget, config: ProjectConfig, refusals: list[str],
         lines.append("Cleanup: no configured commands")
     lines.append("Action: remove worktree")
     if target.branch is not None:
-        lines.append(f"Action: delete branch {target.branch}")
+        action = "delete" if target.record is None or target.record.owns_branch else "retain"
+        lines.append(f"Action: {action} branch {target.branch}")
     if target.record is not None:
         lines.append(f"Action: remove manifest entry {target.key}")
     lines.extend(f"Refused: {reason}" for reason in refusals)

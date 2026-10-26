@@ -28,7 +28,7 @@ Start from a repository with at least one commit:
 
 ```bash
 new-feature my-feature --no-agent
-cd .worktrees/my-feature
+cd "$(new-feature path my-feature)"
 # Edit and commit your changes here.
 cd ../..
 new-feature merge my-feature
@@ -66,6 +66,60 @@ new-feature COMMAND --help
 
 Replace `COMMAND` with a command name. Dry runs print environment values without
 creating a worktree or reserving values.
+
+## Navigation and shell completion
+
+`new-feature path NAME` prints only the absolute worktree path. It accepts an
+exact normalized feature name, verifies the checkout and recorded branch, and
+fails for missing or mismatched worktrees. Use it for shell navigation or agent
+tool paths:
+
+```bash
+cd "$(new-feature path my-feature)"
+```
+
+Load completion in your shell, or add the matching command to its startup file:
+
+```bash
+# Bash
+source <(new-feature completion bash)
+# Zsh, after compinit
+source <(new-feature completion zsh)
+# Fish
+new-feature completion fish | source
+```
+
+Completion suggests commands and managed feature names. Scripts query the
+current repository when completing feature names; generating a script works
+outside a repository.
+
+## Existing branches
+
+Create a managed checkout from an existing local or remote-tracking branch:
+
+```bash
+new-feature create review-fix --from origin/fix/parser --json
+new-feature changes review-fix
+# Review the checkout before running project code.
+new-feature create review-fix --bootstrap --no-agent
+```
+
+`--from` uses refs already present locally and does not fetch or pull. The new
+checkout starts with lifecycle status `inert`: no setup commands, file copying,
+or agent launch. Import disables Git hooks, filters, and filesystem monitors. Change inspection
+also disables these callbacks; inert status and teardown checks disable them too. `--from` cannot be combined with `--bootstrap`, `--agent`, or `--prompt`.
+
+A matching local branch, such as `create fix-parser --from fix-parser`, is
+attached directly and remains after teardown. Other source branches produce a
+new branch named after the feature slug; teardown removes that new branch.
+The configured target branch still determines integration and merge destination.
+
+Use `path` and `changes` to inspect an inert checkout. Explicit `--bootstrap`
+runs setup and activates it, with normal agent selection unless `--no-agent`
+is supplied. Merge and `exec` require activation. Failed bootstrap preserves the
+checkout and returns it to `inert` so you can inspect and retry. Teardown of an
+inert checkout skips configured cleanup commands and retains normal file and
+process protection.
 
 ## Project configuration
 
@@ -187,7 +241,7 @@ uses `--force`. Stop other processes in the feature worktree first; processes wi
 working directories inside it block removal. That includes your shell, so run
 merge from the original checkout.
 
-Teardown runs your cleanup commands, then removes the worktree and branch. If
+Teardown runs your cleanup commands, then removes the worktree and owned branch. If
 cleanup fails, removal stops even with `--force`. Use `--force` only to discard
 uncommitted or unmerged work deliberately, or bypass process protection. Normal
 teardown refuses local files without identical copies in the original checkout,
@@ -218,6 +272,26 @@ to the original checkout afterward; a CLI cannot move its parent shell.
 Teardown accepts `patch-equivalent` branches, whose patches already exist in the
 target, except branches with unmerged merge commits.
 
+Preview batch cleanup of integrated features in the current repository:
+
+```bash
+new-feature prune --merged --dry-run
+new-feature prune --merged --json
+```
+
+`--merged` is required and selects merged or patch-equivalent branches using
+local Git evidence. Unmerged features are skipped. Every removal uses normal
+teardown, including configured cleanup, preservation of local files, branch
+ownership, and process checks. There is no force or expiration policy. Other
+candidates continue after a refusal. Missing worktrees require doctor repair.
+
+JSON reports contain `schema_version: 1`, `command: "prune"`, `ok`, `dry_run`,
+and a slug-sorted `features` array. Each entry contains `slug`, `branch`, absolute
+`worktree`, `outcome`, and a `reasons` array. Outcomes are `removed`, `would-remove`,
+`skipped`, or `refused`. Refusals return exit 1; otherwise exit 0. Preview creates
+no locks or reservations and runs no cleanup. Actual removal rechecks each
+candidate under its feature lock; concurrent changes can invalidate a preview.
+
 Use `new-feature doctor --repair` to clean up stale feature records and branches
 whose worktrees no longer exist. Repair preserves unmerged work and unreadable
 worktrees. It doesn't recreate missing worktrees. Doctor exits nonzero while issues remain.
@@ -228,21 +302,71 @@ contain `command` (`list` or `doctor`), `ok`, and a `features` array sorted by s
 inspection succeeded; doctor's `ok` means no feature has remaining issues.
 Each feature includes `name`, `slug`, `branch`, `target_branch`, absolute `worktree`,
 lifecycle `status`, human `state`, `issues`, `worktree_exists`, `branch_exists`,
-`clean`, `integration`, `config_drift`, `setup_incomplete`, and `worktree_error`.
+`clean`, `integration`, `config_drift`, `setup_incomplete`, `worktree_error`, and
+`generation`, and `owns_branch`.
 `clean` and `integration` are null when unavailable; `worktree_error` is null when
 inspection succeeds. Integration is `merged`, `patch-equivalent`, or `unmerged`.
-Lifecycle status is `initializing`, `active`, or `merged`. Issue labels are
-`setup-incomplete`, `missing-worktree`, `worktree-error`, `missing-branch`, `dirty`,
+Lifecycle status is `initializing`, `active`, `merged`, or `inert`. Issue labels are
+`inert`, `setup-incomplete`, `missing-worktree`, `worktree-error`, `missing-branch`, `dirty`,
 `unmerged`, and `config-drift`. Allocated environment values are omitted.
 
 Doctor also includes `repairs`, an array of `{"slug": "...", "message": "..."}`.
 `doctor --repair --json` reports remaining features after repair. Expected command
 failures emit `{"schema_version": 1, "error": {"code": "command-failed", "message": "..."}}`
-and exit 1. Invalid inspection arguments with `--json` emit the same error envelope
+and exit 1. Invalid arguments for supported JSON commands emit the same error envelope
 with code `invalid-arguments` and exit 2. Doctor still exits 1 while reported issues remain.
 Treat documented field names, issue labels, and error codes as stable within
 schema version 1; accept additional fields and inspect `issues` and `integration`
 instead of parsing human `state` or messages.
+
+### Creation JSON
+
+`new-feature create NAME --json` (or `new-feature NAME --json`) emits one JSON
+document after creation and optional agent launch. Setup, Git, and agent stdout
+is routed to stderr, leaving stdout suitable for parsing. `--json` cannot be
+combined with creation's `--dry-run`.
+
+The result contains `schema_version: 1`, `command: "create"`, `ok`, `status`
+(`created` or `reused`), `feature`, `agent_exit_code`, and `agent_error`. The
+feature contains `name`, `slug`, `branch`, `target_branch`, absolute `worktree`,
+and lifecycle `status`. Allocated environment values are omitted.
+
+`agent_exit_code` is null when no agent launches. A successful agent has exit
+code 0 and null `agent_error`. Failed agent launch or execution sets `ok: false`
+and `agent_error` to `{"code": "agent-failed", "message": "..."}`, returns nonzero,
+and retains the feature identity and prepared worktree. Setup and creation
+failures use the `command-failed` envelope described above.
+
+### Changed files
+
+Inspect one exact managed feature without running project code:
+
+```bash
+new-feature changes my-feature
+new-feature changes my-feature --json
+new-feature changes my-feature --expected-generation TOKEN --json
+```
+
+JSON contains `schema_version: 1`, `command: "changes"`, `ok`, `slug`, `branch`,
+absolute `worktree`, `generation`, `observed_at`, and `changes`. The `changes`
+object contains `state` (`clean` or `modified`), `summary`, and sorted `files`.
+Each file has `path`, changed `index` and/or `worktree` states, and `original_path`
+for renames or copies. States include `modified`, `added`, `deleted`, `renamed`,
+`copied`, `type-changed`, `unmerged`, and `untracked`. Ignored files are omitted.
+`files` is empty for a clean worktree. Inspection bypasses external filters, so
+filtered files may conservatively appear changed when ordinary Git status would
+consider their normalized contents unchanged.
+
+Summary counts are `modified`, `added`, `deleted`, `renamed`, `untracked`,
+`staged`, and `conflicts`; staged counts overlap the other categories. Copies
+and type changes count as modified. Obtain a generation token from inventory
+and pass it through `--expected-generation` to reject a replaced feature.
+Legacy records have null generation; recreate the feature before using this guard.
+Inspection also checks checkout identity before and after reading Git status;
+a replacement detected during inspection fails instead of returning stale data.
+Inspection creates coordination lock files while leaving feature and Git state
+unchanged. This is a point-in-time snapshot; it does not prevent subsequent file edits.
+Failures use the shared JSON error envelope and return nonzero.
 
 Setup and creation ignore `.new-feature/`, `.worktrees/`, and `*.local.toml` locally
 without changing your tracked `.gitignore` file.

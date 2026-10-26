@@ -35,6 +35,8 @@ def feature_json(root: Path, record: FeatureRecord, state: FeatureState) -> dict
         "target_branch": record.target_branch,
         "worktree": str((root / record.worktree).resolve()),
         "status": record.status,
+        "generation": record.generation or None,
+        "owns_branch": record.owns_branch,
         "state": state.describe(),
         "issues": list(state.issues()),
         "worktree_exists": state.worktree_exists,

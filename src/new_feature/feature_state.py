@@ -36,6 +36,7 @@ class FeatureState:
     config_drift: bool
     setup_incomplete: bool = False
     worktree_error: str | None = None
+    inert: bool = False
 
     @property
     def stale(self) -> bool:
@@ -45,6 +46,8 @@ class FeatureState:
     def issues(self) -> tuple[str, ...]:
         """Return the detected consistency problems for this feature."""
         issues: list[str] = []
+        if self.inert:
+            issues.append("inert")
         if self.setup_incomplete:
             issues.append("setup-incomplete")
         if not self.worktree_exists:
@@ -90,7 +93,7 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
     clean = None
     worktree_error = None
     try:
-        clean = worktree_is_clean(worktree) if worktree_exists else None
+        clean = worktree_is_clean(worktree, inert=record.status == "inert") if worktree_exists else None
     except NewFeatureError as exc:
         # NOTE: docs/ARCHITECTURE.md documents inspection of unreadable worktrees.
         worktree_error = str(exc)
@@ -101,6 +104,7 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
     )
     return FeatureState(
         setup_incomplete=record.status == "initializing",
+        inert=record.status == "inert",
         worktree_exists=worktree_exists,
         branch_exists=local_branch_exists,
         clean=clean,
@@ -136,6 +140,10 @@ def reusable_feature_worktree(root: Path, record: FeatureRecord) -> Path:
 
 def require_setup_complete(record: FeatureRecord) -> None:
     """Reject features whose setup never reached the ready state."""
+    if record.status == "inert":
+        raise NewFeatureError(
+            f"feature is inert: {record.slug}; review it, then run `new-feature create {record.slug} --bootstrap`"
+        )
     if record.status == "initializing":
         raise NewFeatureError(
             f"feature setup did not complete: {record.slug}; inspect the worktree, then run "

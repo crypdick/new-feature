@@ -112,7 +112,7 @@ def test_json_unreadable_worktree_reports_error_without_mixing_stdout(
 
 def test_json_literal_on_unsupported_command_preserves_argparse_behavior(capsys):
     with pytest.raises(SystemExit) as exc_info:
-        main(["create", "feature", "--json"])
+        main(["setup", "--json"])
     assert exc_info.value.code == 2
     output = capsys.readouterr()
     assert not output.out

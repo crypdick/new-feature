@@ -151,7 +151,9 @@ def test_create_interrupt_runs_forced_teardown(tmp_path: Path, monkeypatch: pyte
         if commands:
             raise KeyboardInterrupt
 
-    monkeypatch.setattr(cli, "run_commands", interrupt_setup)
+    from new_feature import creation
+
+    monkeypatch.setattr(creation, "run_commands", interrupt_setup)
 
     with pytest.raises(KeyboardInterrupt):
         main(["my-feature", "--no-agent"])
