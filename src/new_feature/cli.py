@@ -3,33 +3,30 @@
 from __future__ import annotations
 
 import argparse  # noqa: TC003 - package-wide beartype needs annotation types at runtime
-import os
 import sys
 from contextlib import nullcontext
 from pathlib import Path
 
 from new_feature import agent as agent_module
-from new_feature.allocator import allocate_env
-from new_feature.cli_parser import parse_args
+from new_feature.changes import inspect_changes
+from new_feature.cli_parser import parse_args, wants_json
 from new_feature.commands import run_commands
-from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
+from new_feature.config import ProjectConfig, load_project_config
 from new_feature.control_checkout import control_root
+from new_feature.creation import CreationOptions, create_feature
 from new_feature.errors import NewFeatureError
 from new_feature.execution import execute_feature
 from new_feature.feature_state import (
     require_setup_complete,
-    reusable_feature_worktree,
 )
 from new_feature.git import (
     branch_paths,
     checkout_target,
     commit_merge,
-    create_worktree,
     ensure_merge_is_clean,
     is_branch_merged,
     merge_feature_branch,
     merge_in_progress,
-    pull_target,
     push_target,
     repo_root,
     worktree_is_clean,
@@ -37,22 +34,23 @@ from new_feature.git import (
 from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.hook_install import install_rules
 from new_feature.inspection import doctor, list_features, warn_if_config_changed, write_json
-from new_feature.lifecycle import merge_failure_log, now
+from new_feature.lifecycle import merge_failure_log
 from new_feature.manifest import (
     FeatureRecord,
-    FeatureStatus,
     feature_operation_lock,
     load_manifest,
     manifest_lock,
-    save_manifest,
+    record_feature_status,
     target_merge_lock,
 )
 from new_feature.merge_transaction import MergeTransaction
+from new_feature.navigation import print_feature_completions, print_feature_path, print_shell_completion
+from new_feature.prune import prune_features
 from new_feature.rule_checker import main as check_rule
 from new_feature.slug import feature_key, slugify
 from new_feature.teardown import teardown
 from new_feature.untracked import copy_local_files, local_paths, validate_local_paths
-from new_feature.worktree_guidance import build_teardown_reminder, build_worktree_ready_message
+from new_feature.worktree_guidance import build_teardown_reminder
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -60,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if len(raw_argv) == 2 and raw_argv[0] == "check-rule":
         return check_rule(raw_argv[1])
-    json_requested = "--json" in raw_argv and raw_argv[0] in {"list", "status", "doctor"}
+    json_requested = wants_json(raw_argv)
     try:
         args = parse_args(raw_argv)
     except SystemExit as exc:
@@ -80,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
+    if args.command == "completion" and args.shell:
+        return print_shell_completion(args.shell)
     if args.command == "install-rules":
         return _install_rules(args)
     return _dispatch(args, control_root(Path.cwd()))
@@ -97,12 +97,17 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "setup":
         return _setup(root, agent_options=agent_module.AgentLaunchOptions(args.agent, args.prompt))
     if args.command == "create":
-        return _create(
+        return create_feature(
             root,
             args.name,
-            no_agent=args.no_agent,
-            dry_run=args.dry_run,
-            agent_options=agent_module.AgentLaunchOptions(args.agent, args.prompt),
+            CreationOptions(
+                no_agent=args.no_agent,
+                dry_run=args.dry_run,
+                json_output=args.json_output,
+                agent_options=agent_module.AgentLaunchOptions(args.agent, args.prompt),
+                from_ref=args.from_ref,
+                bootstrap=args.bootstrap,
+            ),
         )
     if args.command in {"merge", "teardown"}:
         preview = args.command == "teardown" and args.dry_run
@@ -116,6 +121,20 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             )
     if args.command == "exec":
         return execute_feature(root, args.name, args.argv)
+    return _dispatch_inspection(args, root)
+
+
+def _dispatch_inspection(args: argparse.Namespace, root: Path) -> int:
+    if args.command == "path":
+        return print_feature_path(root, args.name)
+    if args.command == "completion":
+        return print_feature_completions(root)
+    if args.command == "prune":
+        return prune_features(root, dry_run=args.dry_run, json_output=args.json_output)
+    if args.command == "changes":
+        return inspect_changes(
+            root, args.name, json_output=args.json_output, expected_generation=args.expected_generation
+        )
     if args.command == "list":
         return list_features(root, json_output=args.json_output)
     if args.command == "doctor":
@@ -133,142 +152,6 @@ def _setup(root: Path, *, agent_options: agent_module.AgentLaunchOptions) -> int
         agent_module.build_setup_prompt(), config.setup_prompt, agent_options.prompt_override
     )
     return agent_module.launch_interactive_agent(agent_command, root, {}, prompt)
-
-
-def _create(
-    root: Path,
-    name: str,
-    *,
-    no_agent: bool,
-    dry_run: bool,
-    agent_options: agent_module.AgentLaunchOptions,
-) -> int:
-    config = load_project_config(root)
-    agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
-    slug = slugify(name)
-    key = feature_key(slug)
-    branch = slug
-    worktree = root / ".worktrees" / slug
-
-    if dry_run:
-        manifest = load_manifest(root)
-        record = manifest.features.get(key)
-        if record is None:
-            env = allocate_env(
-                config=config,
-                manifest=manifest,
-                name=name,
-                slug=slug,
-                branch=branch,
-                worktree=worktree,
-                repo_root=root,
-            )
-        else:
-            reusable_feature_worktree(root, record)
-            env = record.env
-        for env_key, env_value in sorted(env.items()):
-            print(f"{env_key}={env_value}")
-        return 0
-
-    ensure_generated_paths_ignored(root)
-    with feature_operation_lock(root, slug):
-        config = _pull_config_before_create(root, key=key, config=config)
-        agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
-
-        created = False
-        with manifest_lock(root):
-            manifest = load_manifest(root)
-            record = manifest.features.get(key)
-            if record is None:
-                env = allocate_env(
-                    config=config,
-                    manifest=manifest,
-                    name=name,
-                    slug=slug,
-                    branch=branch,
-                    worktree=worktree,
-                    repo_root=root,
-                )
-                create_worktree(root, branch=branch, worktree=worktree, target_branch=config.target_branch)
-                record = FeatureRecord(
-                    name=name,
-                    slug=slug,
-                    branch=branch,
-                    worktree=str(worktree.relative_to(root)),
-                    target_branch=config.target_branch,
-                    # NOTE: docs/ARCHITECTURE.md documents setup readiness and operation locks.
-                    status="initializing",
-                    created_at=now(),
-                    config_fingerprint=config_fingerprint(config),
-                    env=env,
-                )
-                manifest.features[key] = record
-                save_manifest(root, manifest)
-                created = True
-            else:
-                worktree = reusable_feature_worktree(root, record)
-                env = record.env
-
-        if created:
-            try:
-                run_commands(config.setup, cwd=worktree, env=env)
-                record = _record_status(root, key, status="active")
-            except BaseException as setup_error:
-                try:
-                    teardown(root, slug, force=True)
-                except BaseException as teardown_error:
-                    raise NewFeatureError(
-                        f"setup failed ({setup_error}); forced teardown failed ({teardown_error})"
-                    ) from teardown_error
-                raise
-        else:
-            warn_if_config_changed(config, record)
-    if agent_command is None:
-        print(build_worktree_ready_message(worktree))
-        return 0
-    prompt = agent_module.resolve_prompt(
-        agent_module.build_initial_prompt(record.slug), config.create_prompt, agent_options.prompt_override
-    )
-    return agent_module.launch_interactive_agent(agent_command, worktree, env, prompt)
-
-
-def _resolve_create_agent(
-    config: ProjectConfig,
-    *,
-    no_agent: bool,
-    agent_options: agent_module.AgentLaunchOptions,
-) -> tuple[str, ...] | None:
-    # NOTE: README.md documents session detection and explicit --agent precedence.
-    if agent_options.agent_override is None and (
-        os.environ.get("CODEX_CI") == "1" or os.environ.get("CLAUDE_CODE_CHILD_SESSION") == "1"
-    ):
-        no_agent = True
-    agent_command = None if no_agent else agent_module.resolve_agent(config, agent_options.agent_override)
-    if agent_command is None and agent_options.prompt_override is not None:
-        raise agent_module.agent_required_error(prompt_requested=True)
-    return agent_command
-
-
-def _pull_config_before_create(root: Path, *, key: str, config: ProjectConfig) -> ProjectConfig:
-    manifest = load_manifest(root)
-    if not config.pull_before_create or manifest.features.get(key) is not None:
-        return config
-    with target_merge_lock(root):
-        pull_target(root, target_branch=config.target_branch)
-    return load_project_config(root)
-
-
-def _record_status(root: Path, key: str, *, status: FeatureStatus) -> FeatureRecord:
-    with manifest_lock(root):
-        manifest = load_manifest(root)
-        record = manifest.features.get(key)
-        if record is None:
-            raise NewFeatureError(f"unknown feature during status update: {key}")
-        record.status = status
-        if status == "merged":
-            record.merged_at = now()
-        save_manifest(root, manifest)
-        return record
 
 
 def _commit_feature_merge(
@@ -302,7 +185,7 @@ def _commit_feature_merge(
         if transaction.pending_commit():
             commit_merge(root, name=record.name, git_args=git_args)
             transaction.committed()
-    return _record_status(root, feature_key(record.slug), status="merged")
+    return record_feature_status(root, feature_key(record.slug), status="merged")
 
 
 def _merge_target(
@@ -374,7 +257,7 @@ def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = (), include_unt
                 checkout_target(root, target_branch=record.target_branch)
                 copy_local_files(root, worktree, paths, tracked)
             if record.status != "merged":
-                _record_status(root, key, status="merged")
+                record_feature_status(root, key, status="merged")
             if config.push:
                 push_target(root, target_branch=record.target_branch)
     if already_merged:

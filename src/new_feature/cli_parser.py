@@ -26,6 +26,10 @@ _COMMANDS = frozenset({
     "list",
     "status",
     "doctor",
+    "path",
+    "completion",
+    "prune",
+    "changes",
     # Keep unsupported command names reserved so shorthand cannot create features with them.
     "codex-hook",
     "claude-hook",
@@ -75,6 +79,20 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TEXT",
         type=_prompt,
         help="override the agent prompt",
+    )
+    create.add_argument(
+        "--json", dest="json_output", action="store_true", help="emit a versioned creation result"
+    )
+    create.add_argument(
+        "--from",
+        dest="from_ref",
+        metavar="BRANCH",
+        help="import an existing local or remote branch without setup or agent launch",
+    )
+    create.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="explicitly run setup for a previously imported inert feature",
     )
     create.set_defaults(command="create")
 
@@ -192,6 +210,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor.set_defaults(command="doctor")
 
+    _add_workspace_commands(subparsers)
+
     rules = subparsers.add_parser("install-rules", help="install harness-neutral i-insist rules")
     rules.add_argument(
         "--global",
@@ -223,6 +243,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         args.git_args = [value for value in own_arguments if value != "--include-untracked"] + args.git_args[
             boundary:
         ]
+    if args.command == "completion" and (bool(args.shell) == args.features):
+        parser.error("completion requires a shell or --features")
+    if args.command == "create":
+        _check_creation_arguments(parser, args)
     if args.command == "create" and args.no_agent and args.prompt is not None:
         parser.error("--prompt cannot be used with --no-agent")
     if args.command == "exec" and not args.argv:
@@ -234,3 +258,47 @@ def _prompt(value: str) -> str:
     if not value:
         raise argparse.ArgumentTypeError("prompt must be a non-empty string")
     return value
+
+
+def wants_json(argv: list[str]) -> bool:
+    """Recognize JSON intent for supported commands, including shorthand creation."""
+    if "--json" not in argv:
+        return False
+    command = argv[0]
+    return command in {"list", "status", "doctor", "create", "prune", "changes"} or (
+        command not in _COMMANDS and not command.startswith("-")
+    )
+
+
+def _add_workspace_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    path = subparsers.add_parser("path", help="print the absolute path of an exact managed feature")
+    path.add_argument("name", metavar="NAME")
+
+    completion = subparsers.add_parser("completion", help="print shell completion integration")
+    completion.add_argument("shell", nargs="?", choices=("bash", "zsh", "fish"))
+    completion.add_argument("--features", action="store_true", help=argparse.SUPPRESS)
+
+    prune = subparsers.add_parser(
+        "prune", help="remove integrated features using normal teardown safety checks"
+    )
+    prune.add_argument(
+        "--merged", action="store_true", required=True, help="select merged and patch-equivalent features"
+    )
+    prune.add_argument("--dry-run", action="store_true", help="preview candidates without changing resources")
+    prune.add_argument(
+        "--json", dest="json_output", action="store_true", help="emit versioned per-feature outcomes"
+    )
+
+    changes = subparsers.add_parser("changes", help="inspect staged, working-tree, and untracked changes")
+    changes.add_argument("name", metavar="NAME")
+    changes.add_argument("--json", dest="json_output", action="store_true")
+    changes.add_argument("--expected-generation", metavar="TOKEN", help="refuse a replaced feature")
+
+
+def _check_creation_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.json_output and args.dry_run:
+        parser.error("--json cannot be used with --dry-run")
+    if args.from_ref and (args.bootstrap or args.agent or args.prompt):
+        parser.error("--from cannot be used with --bootstrap, --agent, or --prompt")
+    if args.bootstrap and args.dry_run:
+        parser.error("--bootstrap cannot be used with --dry-run")

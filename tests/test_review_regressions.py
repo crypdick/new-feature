@@ -53,7 +53,9 @@ def test_setup_owns_feature_until_ready(tmp_path, monkeypatch):
         except NewFeatureError as error:
             errors.append(str(error))
 
-    monkeypatch.setattr(cli, "run_commands", gated)
+    from new_feature import creation
+
+    monkeypatch.setattr(creation, "run_commands", gated)
     worker = Thread(target=create)
     worker.start()
     assert started.wait(5)

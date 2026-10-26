@@ -89,6 +89,32 @@ def create_worktree(root: Path, *, branch: str, worktree: Path, target_branch: s
     _git(root, "worktree", "add", "-b", branch, str(worktree), target_branch)
 
 
+def import_worktree(root: Path, *, branch: str, worktree: Path, source: str) -> bool:
+    """Check out an existing branch without hooks, filters, or filesystem monitors."""
+    ref = _git(
+        root, "rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", source, capture=True
+    ).stdout.strip()
+    if not ref.startswith(("refs/heads/", "refs/remotes/")) or ref.endswith("/HEAD"):
+        raise NewFeatureError("--from requires an existing local or remote branch")
+    owns_branch = ref != f"refs/heads/{branch}"
+    options = inert_git_options(root)
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    arguments = ["-b", branch, str(worktree), ref] if owns_branch else [str(worktree), branch]
+    _git(root, *options, "worktree", "add", *arguments)
+    return owns_branch
+
+
+def inert_git_options(root: Path) -> list[str]:
+    """Disable Git callbacks when checking out or inspecting unreviewed code."""
+    # NOTE: README.md documents inert import and inspection without Git callbacks.
+    options = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+    for entry in _git(root, "config", "--null", "--list", capture=True).stdout.split("\0"):
+        key = entry.split("\n", 1)[0]
+        if key.startswith("filter.") and key.endswith((".clean", ".smudge", ".process", ".required")):
+            options.extend(["-c", f"{key}={'false' if key.endswith('.required') else ''}"])
+    return options
+
+
 def pull_target(root: Path, *, target_branch: str) -> None:
     """Fast-forward the clean, checked-out target branch from its upstream."""
     current_branch = _git(root, "branch", "--show-current", capture=True).stdout.strip()
@@ -101,10 +127,11 @@ def pull_target(root: Path, *, target_branch: str) -> None:
     _git(root, "pull", "--ff-only", capture=True)
 
 
-def worktree_is_clean(worktree: Path, *, allow_untracked: bool = False) -> bool:
+def worktree_is_clean(worktree: Path, *, allow_untracked: bool = False, inert: bool = False) -> bool:
     """Return whether a worktree has no staged, unstaged, or untracked changes."""
     args = ("--untracked-files=no",) if allow_untracked else ()
-    result = _git(worktree, "status", "--porcelain", *args, capture=True)
+    options = inert_git_options(worktree) if inert else []
+    result = _git(worktree, *options, "status", "--porcelain", *args, capture=True)
     return not result.stdout.strip()
 
 
