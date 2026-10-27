@@ -62,6 +62,16 @@ file edits between verification and a subsequent Git command. Keep external
 writers out of the target checkout during merge. Push happens
 outside that scope, so push failure retains the local merge.
 
+Merge ownership records initialized submodule HEADs, branches and dirty status
+separately from the parent's tracked working-tree diff. An unchanged clean
+submodule checkout may still point at the old commit after Git stages a new
+gitlink. Post-merge checks may reconcile that checkout to exactly the indexed
+commit, retaining its branch or detaching HEAD. Other commits, branches, dirty
+files and initialization changes remain interference. No automatic submodule
+reset or update is performed. If a failing check has changed a submodule checkout,
+the merge is preserved for manual recovery rather than rolling back across that
+checkout change.
+
 Git ancestry determines integration. The manifest's `merged` status doesn't hide later
 commits. Teardown and repair also accept patch-equivalent branches, excluding unmerged
 merge commits whose conflict resolutions patch comparison can't represent.

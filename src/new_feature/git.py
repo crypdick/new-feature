@@ -11,6 +11,16 @@ from new_feature.errors import NewFeatureError
 
 
 @dataclass(frozen=True)
+class SubmoduleState:
+    """An initialized submodule checkout, separate from its parent's index pin."""
+
+    path: Path
+    head: str
+    branch: str | None
+    status: str
+
+
+@dataclass(frozen=True)
 class CheckoutState:
     """Git state whose identity bounds a managed merge's ownership."""
 
@@ -20,6 +30,7 @@ class CheckoutState:
     tree: str
     unstaged: str
     untracked: str
+    submodules: tuple[SubmoduleState, ...]
 
 
 def checkout_state(root: Path) -> CheckoutState:
@@ -31,9 +42,28 @@ def checkout_state(root: Path) -> CheckoutState:
         head=resolve_revision(root, "HEAD"),
         merge_heads=tuple(merge_head.read_text().splitlines()) if merge_head.exists() else (),
         tree=_git(root, "write-tree", capture=True).stdout.strip(),
-        unstaged=_git(root, "diff", "--no-ext-diff", "--binary", capture=True).stdout,
+        # NOTE: docs/ARCHITECTURE.md's merge ownership separates gitlinks from checkouts.
+        unstaged=_git(
+            root, "diff", "--no-ext-diff", "--binary", "--ignore-submodules=all", capture=True
+        ).stdout,
         untracked=_git(root, "ls-files", "--others", "--exclude-standard", "-z", capture=True).stdout,
+        submodules=tuple(
+            SubmoduleState(
+                path=path,
+                head=resolve_revision(root / path, "HEAD"),
+                branch=worktree_branch(root / path),
+                status=_git(
+                    root / path, "status", "--porcelain", "--untracked-files=all", capture=True
+                ).stdout,
+            )
+            for path in initialized_submodules(root)
+        ),
     )
+
+
+def indexed_gitlink(root: Path, path: Path) -> str:
+    """Read the exact gitlink commit recorded in the parent index."""
+    return _git(root, "rev-parse", f":{path.as_posix()}", capture=True).stdout.strip()
 
 
 def commit_parents(root: Path, revision: str) -> tuple[str, ...]:
