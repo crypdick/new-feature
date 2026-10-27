@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path  # noqa: TC003 - runtime annotation checking
 
 from new_feature.errors import NewFeatureError
-from new_feature.git import CheckoutState, checkout_state, commit_parents, resolve_revision, rollback_merge
+from new_feature.git import (
+    CheckoutState,
+    checkout_state,
+    commit_parents,
+    indexed_gitlink,
+    resolve_revision,
+    rollback_merge,
+)
 
 
 @dataclass
@@ -29,6 +36,7 @@ class MergeTransaction:
         if (
             current.branch != self.original.branch
             or current.unstaged
+            or not self._submodules_match(current)
             or current.untracked != self.original.untracked
         ):
             raise NewFeatureError("merge state changed; target checkout preserved")
@@ -46,6 +54,23 @@ class MergeTransaction:
             raise NewFeatureError("unexpected merge revision; target checkout preserved")
         self.owned = current
 
+    def _submodules_match(self, current: CheckoutState) -> bool:
+        """Allow clean owned checkouts to follow the parent's indexed gitlink."""
+        if tuple(module.path for module in current.submodules) != tuple(
+            module.path for module in self.owned.submodules
+        ):
+            return False
+        return all(
+            observed == expected
+            or (
+                not expected.status
+                and not observed.status
+                and observed.branch in {None, expected.branch}
+                and observed.head == indexed_gitlink(self.root, observed.path)
+            )
+            for expected, observed in zip(self.owned.submodules, current.submodules, strict=True)
+        )
+
     def _completed(self, current: CheckoutState) -> bool:
         return (
             (
@@ -56,6 +81,7 @@ class MergeTransaction:
             and not current.merge_heads
             and current.tree == self.owned.tree
             and not current.unstaged
+            and current.submodules == self.owned.submodules
             and current.untracked == self.owned.untracked
             and resolve_revision(self.root, "HEAD^{tree}") == self.owned.tree
             and commit_parents(self.root, current.head) == (self.owned.head, *self.owned.merge_heads)
@@ -68,8 +94,14 @@ class MergeTransaction:
             raise NewFeatureError("feature branch changed during merge; target checkout preserved")
         if current == self.owned:
             return bool(current.merge_heads) or current.tree != resolve_revision(self.root, "HEAD^{tree}")
-        if self._completed(current):
-            return False
+        # NOTE: docs/ARCHITECTURE.md allows only clean indexed submodule reconciliation.
+        if self._submodules_match(current):
+            normalized = replace(current, submodules=self.owned.submodules)
+            if normalized == self.owned:
+                self.owned = current
+                return bool(current.merge_heads) or current.tree != resolve_revision(self.root, "HEAD^{tree}")
+            if self._completed(normalized):
+                return False
         raise NewFeatureError("merge state changed during checks; target checkout preserved")
 
     def committed(self) -> None:
