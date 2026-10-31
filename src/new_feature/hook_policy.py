@@ -11,10 +11,11 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NewType
+from typing import TYPE_CHECKING, NewType, TypedDict
 
 from new_feature.config import load_project_config
 from new_feature.git import git_environment
+from new_feature.manifest import target_merge_lock_held
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -73,6 +74,15 @@ _GIT_OPTIONS_WITH_VALUES = {
 }
 
 
+class _Snapshot(TypedDict):
+    """Tracked target changes plus the merge state that explains staged ones."""
+
+    changes: dict[str, list[int] | None]
+    unstaged: list[str]
+    # HEAD, MERGE_HEAD, and whether the target merge lock is held.
+    merge: list[str | bool]
+
+
 @dataclass(frozen=True)
 class GitContext:
     """Describe the repository and branch that own a target path."""
@@ -96,8 +106,8 @@ def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
 def record_target_changes(command: str, *, cwd: Path, call_id: str | None) -> None:
     """Remember tracked changes on the target branch before a shell command runs."""
     for git_dir, directory in _reached_checkouts(command, cwd=cwd).items():
-        changes = _target_changes(directory)
-        if changes is None:
+        snapshot = _target_snapshot(directory)
+        if snapshot is None:
             continue
         path = _record_path(git_dir, call_id)
         if call_id is not None:
@@ -107,7 +117,7 @@ def record_target_changes(command: str, *, cwd: Path, call_id: str | None) -> No
             for record in path.parent.iterdir():
                 if record.stat().st_mtime < cutoff:
                     record.unlink(missing_ok=True)
-        path.write_text(json.dumps(changes), encoding="utf-8")
+        path.write_text(json.dumps(snapshot), encoding="utf-8")
 
 
 def target_changed_since_record(command: str, *, cwd: Path, call_id: str | None) -> bool:
@@ -119,18 +129,27 @@ def target_changed_since_record(command: str, *, cwd: Path, call_id: str | None)
         try:
             recorded = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            recorded = {}
+            recorded = None
         if call_id is not None:
             path.unlink(missing_ok=True)
-        changes = _target_changes(directory)
-        if changes is None:
+        snapshot = _target_snapshot(directory)
+        if snapshot is None:
             continue
         if call_id is None:
-            path.write_text(json.dumps(changes), encoding="utf-8")
-        changed |= any(
-            name not in recorded or recorded[name] != signature for name, signature in changes.items()
-        )
+            path.write_text(json.dumps(snapshot), encoding="utf-8")
+        changed |= _changed_since(recorded, snapshot)
     return changed
+
+
+def _changed_since(recorded: object, snapshot: _Snapshot) -> bool:
+    previous = recorded if isinstance(recorded, dict) else {}
+    before = previous.get("changes", {})
+    changes, merge_state = snapshot["changes"], snapshot["merge"]
+    if previous.get("merge") != merge_state or merge_state[2]:
+        # NOTE: docs/ARCHITECTURE.md's Agent guards describe this merge-window trade-off.
+        # Merges and commits stage what they change, so edits outside the index still stand out.
+        changes = {name: changes[name] for name in snapshot["unstaged"] if name in changes}
+    return any(name not in before or before[name] != signature for name, signature in changes.items())
 
 
 def _reached_checkouts(command: str, *, cwd: Path) -> dict[Path, Path]:
@@ -153,17 +172,29 @@ def _record_path(git_dir: Path, call_id: str | None) -> Path:
     return git_dir / "new-feature-shell-changes" / f"{name}.json"
 
 
-def _target_changes(directory: Path) -> dict[str, list[int] | None] | None:
+def _target_snapshot(directory: Path) -> _Snapshot | None:
     context = _git_context_for(directory, cwd=directory)
     if context is None or context.branch != context.target_branch:
         return None
-    names = _git_output(context.root, "diff", "HEAD", "--name-only", "--no-renames", "-z")
-    if names is None:  # pragma: no cover - context proved a repository with history
+    root = context.root
+    names = _git_output(root, "diff", "HEAD", "--name-only", "--no-renames", "-z")
+    unstaged = _git_output(root, "diff", "--name-only", "--no-renames", "--diff-filter=u", "-z")
+    head = _git_output(root, "rev-parse", "HEAD")
+    if names is None or unstaged is None or head is None:  # pragma: no cover - context proved history
         return None
+    merge_head = _git_output(root, "rev-parse", "--quiet", "--verify", "MERGE_HEAD") or ""
+    return {
+        "changes": _signatures(root, names),
+        "unstaged": list(filter(None, unstaged.split("\0"))),
+        "merge": [head, merge_head, target_merge_lock_held(root)],
+    }
+
+
+def _signatures(root: Path, names: str) -> dict[str, list[int] | None]:
     changes: dict[str, list[int] | None] = {}
     for name in filter(None, names.split("\0")):
         try:
-            status = (context.root / name).lstat()
+            status = (root / name).lstat()
         except FileNotFoundError:
             changes[name] = None
         else:

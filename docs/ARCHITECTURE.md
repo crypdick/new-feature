@@ -130,7 +130,11 @@ the command,
 any tracked file that is newly changed, changed again, or deleted is reported to the
 agent. The command's effects remain; the report tells the agent to move the change into
 a feature worktree without discarding changes it didn't make. A concurrent command's
-changes can also appear in another call's report. Without a `tool_use_id`, calls share
+changes can also appear in another call's report. If `HEAD` or `MERGE_HEAD` moves
+between the record and the check, or `new-feature` holds the target merge lock, only
+unstaged changes count. This keeps a concurrent `new-feature merge`, which stages its
+changes before committing them, from being reported as the command's edit. Edits that
+are staged during that window aren't reported. Without a `tool_use_id`, calls share
 one record, so one command can mask another's changes. Records older than a day are
 pruned. Claude's failed tool calls are covered too. These checks require i-insist 0.6.0
 or later.

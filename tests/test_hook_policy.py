@@ -315,3 +315,43 @@ def test_post_check_removes_its_record_after_a_branch_switch(tmp_path: Path) -> 
     subprocess.run(["git", "checkout", "-q", "-b", "feature"], cwd=tmp_path, check=True)
     assert not should_block("target-shell-changes", event)
     assert not list(records.iterdir())
+
+
+def commit_feature_change(repo: Path) -> None:
+    subprocess.run(["git", "checkout", "-q", "-b", "feature"], cwd=repo, check=True)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "feature"], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+
+
+def test_post_check_ignores_a_concurrent_merge_but_flags_edits_during_it(tmp_path: Path) -> None:
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    commit_feature_change(tmp_path)
+    reader = call_event(tmp_path, "toolu_reader")
+    assert not should_block("target-branch", reader)
+    subprocess.run(["git", "merge", "-q", "--no-commit", "--no-ff", "feature"], cwd=tmp_path, check=True)
+    assert not should_block("target-shell-changes", reader)
+    editor = call_event(tmp_path, "toolu_editor")
+    assert not should_block("target-branch", editor)
+    (tmp_path / "README.md").write_text("# edited during the merge\n", encoding="utf-8")
+    assert should_block("target-shell-changes", editor)
+
+
+def test_post_check_ignores_staged_changes_while_the_merge_lock_is_held(tmp_path: Path) -> None:
+    from new_feature.manifest import target_merge_lock
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    commit_feature_change(tmp_path)
+    event = call_event(tmp_path, "toolu_a")
+    with target_merge_lock(tmp_path):
+        assert not should_block("target-branch", event)
+        subprocess.run(["git", "merge", "-q", "--squash", "feature"], cwd=tmp_path, check=True)
+        assert not should_block("target-shell-changes", event)
+    assert not should_block("target-branch", event)
+    (tmp_path / "README.md").write_text("# staged after the merge\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+    assert should_block("target-shell-changes", event)
