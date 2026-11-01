@@ -623,7 +623,7 @@ wheels = [
 
 [[package]]
 name = "new-feature"
-version = "1.4.11"
+version = "1.4.12"
 source = { editable = "." }
 dependencies = [
     { name = "beartype" },
