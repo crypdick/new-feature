@@ -266,7 +266,9 @@ def test_manifest_round_trip(tmp_path: Path):
     assert loaded.features["my_feature"].branch == "feature/my-feature"
 
 
-def test_allocate_env_avoids_manifest_ports(tmp_path: Path):
+def test_allocate_env_avoids_manifest_ports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # Availability is independent of the reservation invariant under test.
+    monkeypatch.setattr("new_feature.allocator._port_available", lambda _port: True)
     manifest = Manifest(
         features={
             "other": FeatureRecord(
