@@ -92,6 +92,23 @@ def target_merge_lock(repo_root: Path) -> Iterator[None]:
         yield
 
 
+def target_merge_lock_held(repo_root: Path) -> bool:
+    """Return whether a lifecycle operation currently holds the target merge lock."""
+    lock_path = repo_root / MANIFEST_DIR / TARGET_MERGE_LOCK_FILE
+    try:
+        lock = lock_path.open("rb")
+    except FileNotFoundError:
+        return False
+    with lock:
+        try:
+            # A shared probe conflicts only with FileLock's exclusive flock.
+            fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock, fcntl.LOCK_UN)
+    return False
+
+
 @contextmanager
 def feature_operation_lock(repo_root: Path, slug: str) -> Iterator[None]:
     """Fail fast when a lifecycle operation already owns this feature."""
