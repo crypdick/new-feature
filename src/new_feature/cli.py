@@ -29,6 +29,7 @@ from new_feature.git import (
     merge_in_progress,
     push_target,
     repo_root,
+    sync_target_with_origin,
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
@@ -210,6 +211,9 @@ def _merge_target(
             validate_local_paths(root, root / record.worktree, local_files, tracked)
         # NOTE: docs/ARCHITECTURE.md requires target selection before rollback ownership.
         checkout_target(root, target_branch=record.target_branch)
+        if config.push:
+            # NOTE: README.md documents syncing with origin before merging when push is enabled.
+            sync_target_with_origin(root, target_branch=record.target_branch)
         transaction = MergeTransaction(root, record.branch)
         try:
             record = _commit_feature_merge(root, config, record, git_args=git_args, transaction=transaction)

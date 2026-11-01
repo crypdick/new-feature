@@ -166,7 +166,10 @@ You can also put agent, pull, push, and automatic teardown preferences in shared
 By default, new-feature uses `main` as the target branch, launches no agent, skips
 pull and push, and runs no commands or allocations. With `pull_before_create = true`,
 it fast-forwards the clean target checkout using its upstream. With `push = true`,
-it pushes the merged target branch to `origin`. With `auto-teardown = true`, it runs
+merge first fetches `origin` and fast-forwards the target branch to
+`origin/<target>`, so post-merge commands and the push include merges published by
+other checkouts. If the local target branch has diverged from origin, merge stops
+before merging. After the merge, it pushes the target branch to `origin`. With `auto-teardown = true`, it runs
 teardown after a successful merge, local file transfer, and any configured push.
 Automatic teardown defaults to false.
 
@@ -229,7 +232,8 @@ merging, pushing, or tearing down. A successful Git command that neither integra
 the branch nor prepares changes for a merge commit is treated as a failure.
 
 Merge-check failures print a log path under `.new-feature/diagnostics/merge-failures/`.
-If push fails, rerun merge to retry. By default, merge leaves the worktree in place.
+If push fails, rerun merge to retry. Push can still be rejected if origin moves
+during the merge; `post_merge` has then already run on the unpublished tree. By default, merge leaves the worktree in place.
 Run teardown afterward, before creating another feature with the same name.
 
 With `auto-teardown = true`, merge runs normal teardown automatically, including
