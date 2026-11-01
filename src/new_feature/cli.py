@@ -229,9 +229,28 @@ def _merge_target(
             copy_local_files(
                 root, root / record.worktree, local_files, branch_paths(root, record.target_branch)
             )
-        if config.push:
-            push_target(root, target_branch=record.target_branch)
+        _publish(root, config, record)
         return record
+
+
+def _publish(root: Path, config: ProjectConfig, record: FeatureRecord) -> None:
+    if not config.push:
+        return
+    # NOTE: README.md documents that post_push runs only after a successful push.
+    try:
+        push_target(root, target_branch=record.target_branch)
+    except NewFeatureError as exc:
+        raise NewFeatureError(
+            f"merge is committed locally but not published ({exc}); post_push commands did not run. "
+            f"If origin moved, run `git reset --keep origin/{record.target_branch}` in the target checkout "
+            "and rerun merge; otherwise rerun merge to retry the push"
+        ) from exc
+    run_commands(
+        config.post_push,
+        cwd=root,
+        env=record.env,
+        failure_log=merge_failure_log(root, record.slug, phase="post-push"),
+    )
 
 
 def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = (), include_untracked: bool = False) -> int:
@@ -262,8 +281,7 @@ def _merge(root: Path, name: str, *, git_args: tuple[str, ...] = (), include_unt
                 copy_local_files(root, worktree, paths, tracked)
             if record.status != "merged":
                 record_feature_status(root, key, status="merged")
-            if config.push:
-                push_target(root, target_branch=record.target_branch)
+            _publish(root, config, record)
     if already_merged:
         return _finish_merge(root, config, record)
     if not git_args:

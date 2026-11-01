@@ -89,3 +89,27 @@ def test_merge_publishes_unpushed_target_commits_when_origin_is_behind(
     feature(first, monkeypatch, "alpha")
     assert main(["merge", "alpha"]) == 0
     assert git(remote, "ls-tree", "--name-only", "main").split() == ["README.md", "alpha.txt", "local.txt"]
+
+
+def test_post_push_deploys_only_after_a_successful_push(
+    tmp_path: Path,
+    clones: tuple[Path, Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    remote, first, _ = clones
+    deployed = tmp_path / "first.pushed"
+    (first / ".new-feature.local.toml").write_text(
+        f"push = true\npost_push = ['git rev-parse HEAD > {deployed}']\n", encoding="utf-8"
+    )
+    rejection = remote / "hooks/pre-receive"
+    rejection.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    rejection.chmod(0o755)
+    feature(first, monkeypatch, "alpha")
+    capsys.readouterr()
+    assert main(["merge", "alpha"]) == 1
+    assert "not published" in capsys.readouterr().err
+    assert not deployed.exists()
+    rejection.unlink()
+    assert main(["merge", "alpha"]) == 0
+    assert deployed.read_text().strip() == git(remote, "rev-parse", "main") == git(first, "rev-parse", "main")

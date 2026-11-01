@@ -28,6 +28,7 @@ _CONFIG_KEYS = {
     "setup",
     "pre_merge",
     "post_merge",
+    "post_push",
     "teardown",
     "safe_to_delete",
     "env",
@@ -114,6 +115,7 @@ class ProjectConfig:
     setup: list[str] = field(default_factory=list)
     pre_merge: list[str] = field(default_factory=list)
     post_merge: list[str] = field(default_factory=list)
+    post_push: list[str] = field(default_factory=list)
     teardown: list[str] = field(default_factory=list)
     safe_to_delete: list[str] = field(default_factory=list)
     env: dict[str, EnvSpec] = field(default_factory=dict)
@@ -298,6 +300,8 @@ def config_fingerprint(config: ProjectConfig) -> str:
         "setup": config.setup,
         "pre_merge": config.pre_merge,
         "post_merge": config.post_merge,
+        # Omitted when empty so adding the key leaves existing fingerprints unchanged.
+        **({"post_push": config.post_push} if config.post_push else {}),
         "teardown": config.teardown,
         "safe_to_delete": config.safe_to_delete,
         "env": {key: _env_fingerprint(value) for key, value in sorted(config.env.items())},
@@ -431,6 +435,7 @@ def _parse_project_config(raw: RawTable, *, config_path: str, env_table: str) ->
         setup=parser.string_list("setup"),
         pre_merge=parser.string_list("pre_merge"),
         post_merge=parser.string_list("post_merge"),
+        post_push=parser.string_list("post_push"),
         teardown=parser.string_list("teardown"),
         safe_to_delete=parser.deletion_patterns(),
         env=env,

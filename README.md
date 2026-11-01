@@ -180,7 +180,10 @@ The generated prompt is the final argument. Override it with `create_prompt` or
 `setup_prompt` in configuration, or `--prompt` for one invocation.
 
 Lifecycle commands run sequentially in a shell. `setup`, `pre_merge`, and `teardown`
-run in the feature worktree. `post_merge` runs in the original checkout before committing.
+run in the feature worktree. `post_merge` runs in the original checkout before committing;
+use it for checks that should roll back the merge. With `push = true`, `post_push`
+runs in the original checkout after each successful push, including a retried push
+when merge is rerun; use it for deploys that must match the published branch.
 A nonzero exit stops the operation.
 
 Commands and launched agents receive allocated values plus `NEW_FEATURE_NAME`,
@@ -232,8 +235,11 @@ merging, pushing, or tearing down. A successful Git command that neither integra
 the branch nor prepares changes for a merge commit is treated as a failure.
 
 Merge-check failures print a log path under `.new-feature/diagnostics/merge-failures/`.
-If push fails, rerun merge to retry. Push can still be rejected if origin moves
-during the merge; `post_merge` has then already run on the unpublished tree. By default, merge leaves the worktree in place.
+If push fails, merge exits nonzero, keeps the local merge commit, and skips
+`post_push`. Rerun merge to retry. Push can still be rejected if origin moves during
+the merge; `post_merge` has then already run on the unpublished tree. To rebuild the
+merge on the published branch, run `git reset --keep origin/<target>` in the original
+checkout and rerun merge. By default, merge leaves the worktree in place.
 Run teardown afterward, before creating another feature with the same name.
 
 With `auto-teardown = true`, merge runs normal teardown automatically, including
