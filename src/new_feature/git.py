@@ -318,6 +318,25 @@ def rollback_merge(root: Path, *, revision: str) -> None:
         raise NewFeatureError("managed merge rollback did not restore a clean target checkout")
 
 
+def sync_target_with_origin(root: Path, *, target_branch: str) -> None:
+    """Fast-forward the checked-out target to origin so a merge builds on published history."""
+    _git(root, "fetch", "--quiet", "origin", capture=True)
+    # NOTE: relies on the default origin refspec; a missing ref means nothing is published yet.
+    upstream = f"refs/remotes/origin/{target_branch}"
+    if _git_succeeds(root, "show-ref", "--verify", "--quiet", upstream):
+        if _git_succeeds(root, "merge-base", "--is-ancestor", "HEAD", upstream):
+            _git(root, "merge", "--ff-only", "--quiet", upstream, capture=True)
+        elif not _git_succeeds(root, "merge-base", "--is-ancestor", upstream, "HEAD"):
+            raise NewFeatureError(
+                f"target branch '{target_branch}' has diverged from origin/{target_branch}; "
+                f"integrate origin/{target_branch} into it before merging"
+            )
+
+
+def _git_succeeds(root: Path, *args: str) -> bool:
+    return subprocess.run(["git", *args], cwd=root, check=False, env=git_environment()).returncode == 0
+
+
 def push_target(root: Path, *, target_branch: str) -> None:
     """Push the updated target branch to its configured upstream."""
     _git(root, "push", "origin", target_branch)

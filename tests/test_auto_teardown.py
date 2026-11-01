@@ -51,6 +51,12 @@ def test_auto_teardown_runs_cleanup_after_push_and_retries_failed_push(feature: 
         'printf "%s" "$NEW_FEATURE_SLUG" > "$NEW_FEATURE_REPO_ROOT/cleaned"\']\n',
         encoding="utf-8",
     )
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    with (feature / ".git/info/exclude").open("a", encoding="utf-8") as exclude:
+        exclude.write("/remote.git/\n")
+    rejection = remote / "hooks/pre-receive"
+    rejection.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    rejection.chmod(0o755)
     subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=feature, check=True)
 
     assert main(["merge", "demo"]) == 1
@@ -59,7 +65,7 @@ def test_auto_teardown_runs_cleanup_after_push_and_retries_failed_push(feature: 
     assert load_manifest(feature).features["demo"].status == "merged"
     capsys.readouterr()
 
-    subprocess.run(["git", "init", "--bare", str(remote)], check=True)
+    rejection.unlink()
     assert main(["merge", "demo"]) == 0
     assert (feature / "cleaned").read_text(encoding="utf-8") == "demo"
     assert not (feature / ".worktrees/demo").exists()
