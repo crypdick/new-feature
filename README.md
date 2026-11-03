@@ -381,6 +381,14 @@ Failures use the shared JSON error envelope and return nonzero.
 Setup and creation ignore `.new-feature/`, `.worktrees/`, and `*.local.toml` locally
 without changing your tracked `.gitignore` file.
 
+Updating Git's `info/exclude` uses a persistent coordination file beside it,
+usually `.git/info/exclude.new-feature.lock`. An empty file remains after the
+operation completes; its presence does not mean a lock is held or a command is
+still running. The operating system releases the lock when its holder closes
+the file or exits. Leave the file in place: unlinking it can let concurrent
+writers lock different inodes and lose exclusion updates. A holder check followed
+by deletion can race with a new invocation, so it is not a safe cleanup procedure.
+
 ## Local file transfer
 
 Use an explicit flag to preserve local work alongside a Git merge:

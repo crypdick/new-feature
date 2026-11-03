@@ -17,6 +17,7 @@ def ensure_generated_paths_ignored(repo_root: Path) -> None:
     """Ignore managed state locally without modifying tracked files."""
     exclude = local_exclude_path(repo_root)
     exclude.parent.mkdir(parents=True, exist_ok=True)
+    # NOTE: README.md documents why this coordination inode persists after release.
     with FileLock(str(exclude) + ".new-feature.lock"):
         existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
         missing = [pattern for pattern in GENERATED_PATTERNS if pattern not in existing.splitlines()]
