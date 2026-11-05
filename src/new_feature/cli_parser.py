@@ -94,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explicitly run setup for a previously imported inert feature",
     )
+    create.add_argument(
+        "--ignore-dirty",
+        action="store_true",
+        help="pull before creating even if the target checkout has uncommitted changes",
+    )
     create.set_defaults(command="create")
 
     setup = subparsers.add_parser(
@@ -127,6 +132,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-untracked",
         action="store_true",
         help="copy local files, including ignored files, into target checkout",
+    )
+    merge.add_argument(
+        "--ignore-dirty",
+        action="store_true",
+        help="stash uncommitted target changes during the merge and restore them afterwards",
     )
     merge.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
     merge.add_argument(
@@ -240,7 +250,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         if {"--help", "-h"}.intersection(own_arguments):
             parser.parse_args(["merge", "--help"])
         args.include_untracked |= "--include-untracked" in own_arguments
-        args.git_args = [value for value in own_arguments if value != "--include-untracked"] + args.git_args[
+        args.ignore_dirty |= "--ignore-dirty" in own_arguments
+        wrapper_options = {"--include-untracked", "--ignore-dirty"}
+        args.git_args = [value for value in own_arguments if value not in wrapper_options] + args.git_args[
             boundary:
         ]
     if args.command == "completion" and (bool(args.shell) == args.features):

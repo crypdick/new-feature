@@ -59,7 +59,12 @@ may finish the exact prepared merge (same ordered parents and tree); unrelated
 commits or edits detected at these boundaries are never adopted. The target lock
 serializes cooperating `new-feature` operations; it cannot lock out manual Git or
 file edits between verification and a subsequent Git command. Keep external
-writers out of the target checkout during merge. Push happens
+writers out of the target checkout during merge. `merge --ignore-dirty` first refuses
+when uncommitted paths overlap the paths between HEAD and the `git merge-tree` result,
+so the later restore cannot conflict with the merge itself; it then stashes
+uncommitted target changes inside the target lock, before ownership is captured,
+so rollback and ownership checks see the same clean checkout as a normal merge;
+the stash is applied and dropped by commit afterwards, on success or failure. Push happens
 outside that scope, so push failure retains the local merge.
 
 Merge ownership records initialized submodule HEADs, branches and dirty status
