@@ -104,6 +104,8 @@ def test_successful_git_noop_cannot_record_or_push_a_merge(tmp_path: Path, monke
     pushes = []
     monkeypatch.setattr(cli, "push_target", lambda *_args, **_kwargs: pushes.append(True))
     monkeypatch.setattr(cli, "sync_target_with_origin", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "target_merge_base", lambda _root, *, target_branch, fetch: target_branch)
+    monkeypatch.setattr(cli, "ensure_push_possible", lambda *_args, **_kwargs: None)
     assert cli.main(["merge", "demo"]) == 1
     assert "did not integrate" in capsys.readouterr().err
     assert load_manifest(tmp_path).features["demo"].status == "active"
@@ -155,6 +157,8 @@ def test_failed_push_keeps_the_merge_recorded_and_can_be_retried(
 
     monkeypatch.setattr(cli, "push_target", push)
     monkeypatch.setattr(cli, "sync_target_with_origin", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "target_merge_base", lambda _root, *, target_branch, fetch: target_branch)
+    monkeypatch.setattr(cli, "ensure_push_possible", lambda *_args, **_kwargs: None)
     with pytest.raises(NewFeatureError, match="push failed"):
         cli._merge(tmp_path, "my-feature")
     assert load_manifest(tmp_path).features["my_feature"].status == "merged"

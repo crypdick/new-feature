@@ -32,7 +32,7 @@ def test_remove_worktree_and_branch_recovers_when_git_removes_only_the_directory
             raise NewFeatureError("git command failed: worktree remove")
         return subprocess.CompletedProcess(["git", *args], 0, stdout="")
 
-    monkeypatch.setattr(git, "_git", fake_git)
+    monkeypatch.setattr(git, "run_git", fake_git)
 
     remove_worktree_and_branch(tmp_path, branch="feature", worktree=worktree, force=False)
 
@@ -55,7 +55,7 @@ def test_remove_worktree_and_branch_preserves_a_failed_removal_when_worktree_rem
             return subprocess.CompletedProcess(["git", *args], 0, stdout=" M file\n")
         raise NewFeatureError("git command failed: worktree remove")
 
-    monkeypatch.setattr(git, "_git", fake_git)
+    monkeypatch.setattr(git, "run_git", fake_git)
 
     with pytest.raises(NewFeatureError, match="worktree remove"):
         remove_worktree_and_branch(tmp_path, branch="feature", worktree=worktree, force=False)

@@ -170,8 +170,11 @@ skips the clean check and leaves uncommitted target changes in place, and
 `git pull --ff-only` still refuses to overwrite any of them. With `push = true`,
 merge first fetches `origin` and fast-forwards the target branch to
 `origin/<target>`, so post-merge commands and the push include merges published by
-other checkouts. If the local target branch has diverged from origin, merge stops
-before merging. After the merge, it pushes the target branch to `origin`. With `auto-teardown = true`, it runs
+other checkouts. Before pre-merge checks run, merge fetches `origin` and refuses
+a target that has diverged from it, a feature that conflicts with `origin/<target>`,
+and a push destination that rejects a `git push --dry-run` (unreachable remote,
+missing credentials, no write access). Server-side hooks and branch protection run
+only on the real push, so those rejections still arrive after the local merge. After the merge, it pushes the target branch to `origin`. With `auto-teardown = true`, it runs
 teardown after a successful merge, local file transfer, and any configured push.
 Automatic teardown defaults to false.
 
