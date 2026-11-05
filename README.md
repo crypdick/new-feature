@@ -165,7 +165,9 @@ You can also put agent, pull, push, and automatic teardown preferences in shared
 
 By default, new-feature uses `main` as the target branch, launches no agent, skips
 pull and push, and runs no commands or allocations. With `pull_before_create = true`,
-it fast-forwards the clean target checkout using its upstream. With `push = true`,
+it fast-forwards the clean target checkout using its upstream; `create --ignore-dirty`
+skips the clean check and leaves uncommitted target changes in place, and
+`git pull --ff-only` still refuses to overwrite any of them. With `push = true`,
 merge first fetches `origin` and fast-forwards the target branch to
 `origin/<target>`, so post-merge commands and the push include merges published by
 other checkouts. If the local target branch has diverged from origin, merge stops
@@ -218,7 +220,15 @@ the feature.
 The `new-feature merge NAME` command requires clean feature and target checkouts
 and refuses merge conflicts. Incoming tracked paths are checked for collisions with existing local paths,
 including ignored files in the target checkout. `--include-untracked` permits local files in the feature
-worktree while still requiring committed changes to tracked files. Failed merges restore the target checkout only while Git state still matches the
+worktree while still requiring committed changes to tracked files. `--ignore-dirty` accepts an
+unrelated dirty target checkout. After taking the target lock, it first refuses if any
+uncommitted path, including untracked files, overlaps a path the merge would change, as
+`git merge` does with a dirty checkout. Incoming paths come from the `git merge-tree` result,
+built on `origin/<target>` when `push = true` would fast-forward to it, plus files copied by
+`--include-untracked`. Otherwise it stashes the changes, runs the normal merge on the clean
+checkout, then restores them with `git stash apply --index`, also after a failed merge. If
+something else writes to the checkout meanwhile and the restore fails, the stash stays on the
+stash stack and the error prints the `git stash apply --index <commit>` command. Failed merges restore the target checkout only while Git state still matches the
 tool-owned merge. Intervening commits, branch changes, edits, or new non-ignored
 files stop automatic recovery and remain intact for manual review. An exact
 merge commit completed during checks is accepted without another commit.

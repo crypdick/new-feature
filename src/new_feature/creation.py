@@ -44,6 +44,7 @@ class CreationOptions:
     json_output: bool = False
     from_ref: str | None = None
     bootstrap: bool = False
+    ignore_dirty: bool = False
 
 
 def create_feature(root: Path, name: str, options: CreationOptions) -> int:
@@ -64,7 +65,9 @@ def create_feature(root: Path, name: str, options: CreationOptions) -> int:
         ensure_generated_paths_ignored(root)
         with feature_operation_lock(root, slug):
             if options.from_ref is None and not options.bootstrap:
-                config = _pull_config_before_create(root, key=key, config=config)
+                config = _pull_config_before_create(
+                    root, key=key, config=config, ignore_dirty=options.ignore_dirty
+                )
             agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
 
             record, created = _prepare_feature(root, name, config, options)
@@ -157,12 +160,14 @@ def _resolve_create_agent(
     return agent_command
 
 
-def _pull_config_before_create(root: Path, *, key: str, config: ProjectConfig) -> ProjectConfig:
+def _pull_config_before_create(
+    root: Path, *, key: str, config: ProjectConfig, ignore_dirty: bool
+) -> ProjectConfig:
     manifest = load_manifest(root)
     if not config.pull_before_create or manifest.features.get(key) is not None:
         return config
     with target_merge_lock(root):
-        pull_target(root, target_branch=config.target_branch)
+        pull_target(root, target_branch=config.target_branch, ignore_dirty=ignore_dirty)
     return load_project_config(root)
 
 

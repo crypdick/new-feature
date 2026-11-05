@@ -45,6 +45,7 @@ or installing optional hooks.
 MERGE_DESCRIPTION = """\
 Check and merge a feature into its target branch. Requires clean feature and target checkouts.
 --include-untracked copies local files, including ignored files, without committing them.
+--ignore-dirty stashes uncommitted target changes during the merge and restores them after.
 Built-in temporary paths and safe_to_delete patterns are excluded.
 Failed checks stop the merge. The command pushes only when push = true.
 With auto-teardown = true, success runs normal teardown after any push.

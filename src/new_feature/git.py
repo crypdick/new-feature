@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import os
 import subprocess
+import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from new_feature.errors import NewFeatureError
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @dataclass(frozen=True)
@@ -145,16 +151,72 @@ def inert_git_options(root: Path) -> list[str]:
     return options
 
 
-def pull_target(root: Path, *, target_branch: str) -> None:
-    """Fast-forward the clean, checked-out target branch from its upstream."""
+def pull_target(root: Path, *, target_branch: str, ignore_dirty: bool = False) -> None:
+    """Fast-forward the checked-out target branch from its upstream.
+
+    With ignore_dirty, uncommitted changes stay in place; `git pull --ff-only`
+    still refuses to overwrite any of them.
+    """
     current_branch = _git(root, "branch", "--show-current", capture=True).stdout.strip()
     if current_branch != target_branch:
         raise NewFeatureError(f"target branch '{target_branch}' is not checked out")
-    if not worktree_is_clean(root):
+    if not ignore_dirty and not worktree_is_clean(root):
         raise NewFeatureError(
-            "target checkout has uncommitted changes; commit or stash them before creating a feature"
+            "target checkout has uncommitted changes; commit or stash them before creating a feature, "
+            "or pass --ignore-dirty to keep them in place"
         )
     _git(root, "pull", "--ff-only", capture=True)
+
+
+@contextmanager
+def uncommitted_changes_set_aside(root: Path, *, purpose: str) -> Iterator[None]:
+    """Stash uncommitted changes, including untracked files, and restore them afterwards.
+
+    Restoring runs on success and failure. When the stash cannot be applied
+    cleanly, it stays on the stash stack and the error names its commit.
+    """
+    # NOTE: README.md documents --ignore-dirty and its retained-stash recovery.
+    stash = None
+    if not worktree_is_clean(root):
+        message = f"new-feature {purpose} {uuid.uuid4().hex[:12]}"
+        _git(root, "stash", "push", "--include-untracked", "--quiet", "--message", message, capture=True)
+        # Git stashes nothing for changes such as dirty submodules; callers' clean checks still apply.
+        stash = _stash_entry(root, field="%H", subject=message)
+    if stash is None:
+        yield
+        return
+    try:
+        yield
+    except BaseException as error:
+        _restore_stash(root, stash, failure=error)
+        raise
+    _restore_stash(root, stash)
+
+
+def _restore_stash(root: Path, stash: str, *, failure: BaseException | None = None) -> None:
+    if not _git_succeeds(root, "stash", "apply", "--index", "--quiet", stash):
+        message = (
+            f"uncommitted target changes did not restore cleanly and remain in stash {stash}; "
+            f"inspect `git status`, then restore on a clean checkout with `git stash apply --index {stash}`"
+        )
+        if failure is None:
+            raise NewFeatureError(message)
+        raise NewFeatureError(f"{failure}; {message}") from failure
+    # Locate the entry by commit at drop time; other processes may have pushed or dropped stashes.
+    entry = _stash_entry(root, field="%gd", commit=stash)
+    if entry is not None:
+        _git(root, "stash", "drop", "--quiet", entry, capture=True)
+
+
+def _stash_entry(
+    root: Path, *, field: str, subject: str | None = None, commit: str | None = None
+) -> str | None:
+    listing = _git(root, "stash", "list", f"--format={field}%x00%H%x00%gs", capture=True).stdout
+    for line in listing.splitlines():
+        value, entry_commit, entry_subject = line.split("\0", 2)
+        if entry_commit == commit or (subject is not None and entry_subject.endswith(subject)):
+            return value
+    return None
 
 
 def worktree_is_clean(worktree: Path, *, allow_untracked: bool = False, inert: bool = False) -> bool:
@@ -243,17 +305,75 @@ def branch_has_unmerged_merge_commits(root: Path, *, branch: str, target_branch:
 
 def merge_is_clean(root: Path, *, branch: str, target_branch: str) -> bool:
     """Return whether merging a feature branch into its target would avoid conflicts."""
+    return _merge_result_tree(root, branch=branch, target_branch=target_branch) is not None
+
+
+def _merge_result_tree(root: Path, *, branch: str, target_branch: str) -> str | None:
+    """Return the tree a conflict-free merge would produce, or None when it would conflict."""
     result = subprocess.run(
         ["git", "merge-tree", "--write-tree", target_branch, branch],
         cwd=root,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
         check=False,
         env=git_environment(),
     )
     if result.returncode not in {0, 1}:
         raise NewFeatureError(f"git command failed while checking merge of {branch} into {target_branch}")
-    return result.returncode == 0
+    return result.stdout.split("\n", 1)[0] if result.returncode == 0 else None
+
+
+def ensure_changes_clear_of_merge(
+    root: Path, *, branch: str, target_branch: str, fetch: bool, local_files: tuple[Path, ...]
+) -> None:
+    """Refuse when uncommitted changes touch paths the merge or local file copies would change.
+
+    This mirrors `git merge` with a dirty checkout, so restoring stashed changes
+    after the merge does not conflict.
+    """
+    # NOTE: README.md documents the --ignore-dirty overlap refusal.
+    dirty = _dirty_paths(root)
+    if not dirty:
+        return
+    base = _merge_base_ref(root, target_branch=target_branch, fetch=fetch)
+    incoming = set(local_files)
+    result_tree = _merge_result_tree(root, branch=branch, target_branch=base)
+    if result_tree is None:
+        raise NewFeatureError(
+            "feature branch conflicts with the target branch, so --ignore-dirty cannot predict which "
+            "paths the merge changes; commit or stash target changes, or resolve the conflicts first"
+        )
+    diff = _git(root, "diff", "--name-only", "--no-renames", "-z", "HEAD", result_tree, capture=True)
+    incoming.update(Path(name) for name in diff.stdout.split("\0") if name)
+    overlap = sorted(
+        str(path)
+        for path in dirty
+        if any(path == other or other in path.parents or path in other.parents for other in incoming)
+    )
+    if overlap:
+        raise NewFeatureError(
+            "uncommitted target changes touch paths this merge changes: "
+            f"{', '.join(overlap)}; commit or stash them before merging"
+        )
+
+
+def _merge_base_ref(root: Path, *, target_branch: str, fetch: bool) -> str:
+    """Return the ref the merge will build on, matching sync_target_with_origin's fast-forward."""
+    if not fetch:
+        return target_branch
+    _git(root, "fetch", "--quiet", "origin", capture=True)
+    upstream = f"refs/remotes/origin/{target_branch}"
+    exists = _git_succeeds(root, "show-ref", "--verify", "--quiet", upstream)
+    if exists and _git_succeeds(root, "merge-base", "--is-ancestor", target_branch, upstream):
+        return upstream
+    return target_branch
+
+
+def _dirty_paths(root: Path) -> tuple[Path, ...]:
+    status = _git(
+        root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", capture=True
+    ).stdout
+    return tuple(Path(entry[3:]) for entry in status.split("\0") if entry)
 
 
 def ensure_merge_is_clean(root: Path, *, branch: str, target_branch: str) -> None:
