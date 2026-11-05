@@ -197,6 +197,8 @@ def test_transfer_after_git_merge_and_push_retry(tmp_path: Path, monkeypatch, ca
 
     monkeypatch.setattr(cli, "push_target", push)
     monkeypatch.setattr(cli, "sync_target_with_origin", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(cli, "target_merge_base", lambda _root, *, target_branch, fetch: target_branch)
+    monkeypatch.setattr(cli, "ensure_push_possible", lambda *_args, **_kwargs: None)
     assert main(["merge", "demo", "--include-untracked"]) == 1
     assert "push failed" in capsys.readouterr().err
     assert (tmp_path / "drafts/note").read_text() == "keep"

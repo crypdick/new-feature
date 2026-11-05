@@ -14,6 +14,7 @@ from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, load_project_config
 from new_feature.control_checkout import control_root
 from new_feature.creation import CreationOptions, create_feature
+from new_feature.dirty_target import ensure_changes_clear_of_merge, uncommitted_changes_set_aside
 from new_feature.errors import NewFeatureError
 from new_feature.execution import execute_feature
 from new_feature.feature_state import (
@@ -23,15 +24,15 @@ from new_feature.git import (
     branch_paths,
     checkout_target,
     commit_merge,
-    ensure_changes_clear_of_merge,
     ensure_merge_is_clean,
+    ensure_push_possible,
     is_branch_merged,
     merge_feature_branch,
     merge_in_progress,
     push_target,
     repo_root,
     sync_target_with_origin,
-    uncommitted_changes_set_aside,
+    target_merge_base,
     worktree_is_clean,
 )
 from new_feature.gitignore import ensure_generated_paths_ignored
@@ -319,8 +320,12 @@ def _merge(
             _publish(root, config, record)
     if already_merged:
         return _finish_merge(root, config, record)
+    # NOTE: README.md documents refusing origin conflicts, divergence, and push access before checks.
+    base = target_merge_base(root, target_branch=record.target_branch, fetch=config.push)
     if not git_args:
-        ensure_merge_is_clean(root, branch=record.branch, target_branch=record.target_branch)
+        ensure_merge_is_clean(root, branch=record.branch, target_branch=base)
+    if config.push:
+        ensure_push_possible(root, base=base, target_branch=record.target_branch)
     if config.pre_merge:
         print("new-feature: running pre-merge checks", file=sys.stderr, flush=True)
     # NOTE: README.md documents retained merge-check diagnostics.
