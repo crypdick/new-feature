@@ -291,6 +291,31 @@ def test_post_check_removes_its_record_and_prunes_stale_records(tmp_path: Path) 
     assert not list(records.iterdir())
 
 
+def test_pre_check_tolerates_concurrent_record_removal(tmp_path: Path, monkeypatch) -> None:
+    from pathlib import Path
+
+    from tests.conftest import init_git_repo
+
+    init_git_repo(tmp_path)
+    first = call_event(tmp_path, "toolu_a")
+    second = call_event(tmp_path, "toolu_b")
+    assert not should_block("target-branch", first)
+    records = tmp_path / ".git/new-feature-shell-changes"
+    original_iterdir = Path.iterdir
+
+    def iterdir(path):
+        entries = list(original_iterdir(path))
+        if path == records:
+            assert not should_block("target-shell-changes", first)
+        return iter(entries)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "iterdir", iterdir)
+        assert not should_block("target-branch", second)
+    (tmp_path / "README.md").write_text("# changed by second call\n", encoding="utf-8")
+    assert should_block("target-shell-changes", second)
+
+
 def test_post_check_follows_cd_into_another_target_checkout(tmp_path: Path) -> None:
     from tests.conftest import init_git_repo
 

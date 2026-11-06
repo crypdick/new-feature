@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NewType, TypedDict
@@ -115,8 +116,10 @@ def record_target_changes(command: str, *, cwd: Path, call_id: str | None) -> No
             # Another rule can block a call after this record, so its post check never runs.
             cutoff = time.time() - _STALE_RECORD_SECONDS
             for record in path.parent.iterdir():
-                if record.stat().st_mtime < cutoff:
-                    record.unlink(missing_ok=True)
+                # Post checks and other cleanup calls can delete records concurrently.
+                with suppress(FileNotFoundError):
+                    if record.stat().st_mtime < cutoff:
+                        record.unlink(missing_ok=True)
         path.write_text(json.dumps(snapshot), encoding="utf-8")
 
 
