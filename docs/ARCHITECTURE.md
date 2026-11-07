@@ -133,9 +133,10 @@ edit check records tracked changes in each checkout's Git directory, covering th
 current directory and literal `cd` targets, one record per harness `tool_use_id`. After
 the command,
 any tracked file that is newly changed, changed again, or deleted is reported to the
-agent. The command's effects remain; the report tells the agent to move the change into
-a feature worktree without discarding changes it didn't make. A concurrent command's
-changes can also appear in another call's report. If `HEAD` or `MERGE_HEAD` moves
+agent. The command's effects remain. Snapshots can detect changes but cannot tell which
+command made them. The report asks the agent to check `git status` and `git log` for a
+completed merge or concurrent edits before restoring anything. Move only edits you made
+directly to a feature worktree. If `HEAD` or `MERGE_HEAD` moves
 between the record and the check, or `new-feature` holds the target merge lock, only
 unstaged changes count. This keeps a concurrent `new-feature merge`, which stages its
 changes before committing them, from being reported as the command's edit. Edits that

@@ -20,7 +20,8 @@ MESSAGES = {
     "worktree-add": "Direct git worktree add is disabled. Use new-feature <feature-name> --no-agent, then work in .worktrees/<feature-name>. Only the human can authorize an override with I insist.",
     "worktree-remove": "Direct git worktree remove is disabled. Use new-feature teardown <feature-name>. Only the human can authorize an override with I insist.",
     "target-branch": "Direct edits on the repository's target branch are disabled. Run new-feature <feature-name> --no-agent, then continue in .worktrees/<feature-name>. Only the human can authorize an override with I insist.",
-    "target-shell-changes": "This shell command changed tracked files in the target-branch checkout; run git status there to see them. Move your change into a feature worktree with new-feature <feature-name> --no-agent, then restore only the files you changed with git restore. Don't discard changes you didn't make.",
+    # NOTE: docs/ARCHITECTURE.md explains why snapshots cannot attribute changes to a command.
+    "target-shell-changes": "Tracked files in the target-branch checkout changed during this shell command. Check git status and git log in that checkout for a completed new-feature merge or concurrent edits before restoring anything. If you made a direct edit, move it into a feature worktree with new-feature <feature-name> --no-agent, then restore only your own edit. Leave completed merges and other sessions' changes in place.",
     "target-merge": "Direct git merge on the target branch is disabled. Use new-feature merge <feature-name>. Recovery remains allowed: git merge --continue, --abort, or --quit. Only the human can authorize an override with I insist.",
 }
 
