@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Prek hook to enforce timeless comments.
 
-Philosophy: Comments should describe *what* code does and *why*, not narrate
-repository history. Temporal language that centers chronology instead of
-current behavior makes comments age poorly and obscures the code's present
-intent.
+Comments should explain current behavior and reasons, not narrate past changes.
+Only explicit historical phrases are checked; domain vocabulary is not history.
 
 Detects:
-- Temporal keywords in inline comments and docstrings (see ``TEMPORAL_KEYWORDS``)
+- Historical phrases in inline comments and docstrings (see ``TEMPORAL_KEYWORDS``)
 
 Allowed:
 - Lines annotated with ``# allow: timeless-comments``
@@ -20,135 +18,88 @@ Exit codes:
   1 - Violations found
 """
 
+import ast
+import io
 import re
 import sys
+import tokenize
 from pathlib import Path
 
-# Keywords that indicate temporal language in comments
+# Keep semantic judgments about words such as "fallback" or "compatible" advisory.
 TEMPORAL_KEYWORDS = [
-    r"\blegacy\b",
-    r"\bfallback\b",
-    r"\bold\b",
-    r"\bobsolete\b",
-    r"\bhas been\b",
-    r"\bused to\b",
-    r"\bis being\b",
-    r"\bnew\b",
-    r"\bprevious\b",
-    r"\bprior\b",
-    r"\bdeprecate[ds]?\b",
-    r"\boriginal\b",
-    r"\brefactor\b",
-    r"\breplace[ds]?\b",
-    r"\bmigrate[ds]?\b",
-    r"\bupgrade[ds]?\b",
     r"\bno longer\b",
-    r"\bunused\b",
-    r"\bhistoric\b",
-    r"\bremoved\b",
-    r"\bswitch\b",
-    r"\bcompatibility\b",
-    r"\bcompatible\b",
-    r"\bformer\b",
+    r"\bpreviously\b",
+    r"\bformerly\b",
     r"\bis now\b",
-    r"\bwere removed\b",
     r"\bfor now\b",
-    r"\bin favor of\b",
-    r"\bbut wait\b",
-    r"\bactually,\b",
-    r"\bwait,\b",
-    r"\bah!\b",
+    r"\bhas been (?:removed|replaced|renamed|deprecated)\b",
 ]
 
 
-def extract_comments(file_path: Path) -> list[tuple[int, str]]:
-    """Extract all comments from a Python file.
+_ALLOW = re.compile(r"#\s*allow:\s*timeless-comments(?![\w-])", re.IGNORECASE)
+_TASK_MARKER = re.compile(r"\b(?:TODO|FIXME)\b", re.IGNORECASE)
+_TEMPORAL_PATTERNS = [re.compile(keyword, re.IGNORECASE) for keyword in TEMPORAL_KEYWORDS]
 
-    Returns list of (line_number, comment_text) tuples.
-    """
+
+def extract_comments(content: str, filename: str = "<unknown>") -> list[tuple[int, str]]:
+    """Extract comment tokens and docstring source, excluding neighboring code."""
+    comments: set[tuple[int, str]] = set()
     try:
-        lines = file_path.read_text(encoding="utf-8").splitlines(keepends=True)
-    except UnicodeDecodeError:
-        return []
+        for token in tokenize.generate_tokens(io.StringIO(content).readline):
+            if token.type == tokenize.COMMENT:
+                comments.add((token.start[0], token.string))
+    except (IndentationError, tokenize.TokenError):
+        pass  # Keep comments read before a syntax error; Ruff reports the error.
 
-    comments = []
-    in_docstring = False
-    docstring_delimiter: str | None = None
-
-    for line_num, line in enumerate(lines, start=1):
-        stripped = line.strip()
-
-        # Handle docstrings
-        if in_docstring:
-            comments.append((line_num, line))
-            if docstring_delimiter is not None and docstring_delimiter in line:
-                in_docstring = False
-        elif stripped.startswith(('"""', "'''")):
-            docstring_delimiter = '"""' if stripped.startswith('"""') else "'''"
-            in_docstring = True
-            comments.append((line_num, line))
-
-            # Check if docstring ends on same line
-            if stripped.count(docstring_delimiter) >= 2:
-                in_docstring = False
-        elif "#" in line:
-            # Regular comment - extract everything after the first #
-            comment_start = line.find("#")
-            comment_text = line[comment_start:]
-            comments.append((line_num, comment_text))
-
-    return comments
-
-
-def _has_allow_comment(file_path: Path, line_num: int) -> bool:
-    """Check if line has ``# allow: timeless-comments`` comment."""
     try:
-        lines = file_path.read_text(encoding="utf-8").splitlines()
-        if 0 < line_num <= len(lines):
-            line_lower = lines[line_num - 1].lower()
-            if "# allow:" in line_lower and "timeless-comments" in line_lower:
-                return True
-    except (UnicodeDecodeError, IndexError):
-        pass
-    return False
+        tree = ast.parse(content, filename=filename)
+    except SyntaxError:
+        return sorted(comments)
+
+    containers = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    for node in ast.walk(tree):
+        if not isinstance(node, containers) or not node.body:
+            continue
+        first = node.body[0]
+        if not (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            continue
+        segment = ast.get_source_segment(content, first.value)
+        if segment is not None:
+            comments.update(enumerate(segment.split("\n"), start=first.value.lineno))
+    return sorted(comments)
 
 
 def check_timeless_comments(file_path: Path) -> list[tuple[int, str, str]]:
-    """Check for temporal language in comments.
-
-    Returns list of (line_number, comment_text, matched_keyword) tuples.
-    """
-    violations = []
-    comments = extract_comments(file_path)
-
-    for line_num, comment_text in comments:
-        comment_lower = comment_text.lower()
-
-        # Skip if line has allow comment
-        if _has_allow_comment(file_path, line_num):
+    """Return (line, comment, keyword pattern), with at most one finding per line."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return []  # Ruff owns encoding diagnostics.
+    comments = extract_comments(content, str(file_path))
+    exempt_lines = {line for line, comment in comments if _ALLOW.search(comment)}
+    violations: dict[int, tuple[int, str, str]] = {}
+    for line_num, comment in comments:
+        if (
+            line_num in exempt_lines
+            or "\u23f3" in comment
+            or re.search(r"\btemporal-ok\b", comment, re.IGNORECASE)
+            or _TASK_MARKER.search(comment)
+        ):
             continue
-
-        # Skip if comment has exemption marker
-        if "\u23f3" in comment_text or "temporal-ok" in comment_lower:
-            continue
-
-        # Skip lines with TODO or FIXME (they are inherently time-bound)
-        if "todo" in comment_lower or "fixme" in comment_lower:
-            continue
-
-        # Check each temporal keyword
-        for keyword in TEMPORAL_KEYWORDS:
-            if re.search(keyword, comment_lower):
-                violations.append((line_num, comment_text.strip(), keyword))
-                break  # Only report one violation per line
-
-    return violations
+        for pattern in _TEMPORAL_PATTERNS:
+            if pattern.search(comment):
+                violations.setdefault(line_num, (line_num, comment.strip(), pattern.pattern))
+                break
+    return list(violations.values())
 
 
 def main(filenames: list[str]) -> int:
     """Run timeless comment check on provided files."""
     exit_code = 0
-    total_violations = 0
 
     for filename in filenames:
         file_path = Path(filename)
@@ -165,7 +116,6 @@ def main(filenames: list[str]) -> int:
 
         if violations:
             exit_code = 1
-            total_violations += len(violations)
 
             for line_num, _comment_text, keyword in violations:
                 print(
@@ -173,22 +123,6 @@ def main(filenames: list[str]) -> int:
                     f"in comment — rewrite to describe current behavior, "
                     f"not history (or mark with # temporal-ok)"
                 )
-
-    if exit_code != 0:
-        print("\n" + "=" * 70)
-        print(f"Found {total_violations} non-timeless comment(s).")
-        print("")
-        print("  FIX the comment (preferred):")
-        print("     BAD:  # Temporary function for a separate code path")
-        print("     GOOD: # Calculates total cost including tax")
-        print("     If the comment only explains repository history, delete it.")
-        print("")
-        print("  EXEMPT with '# temporal-ok' or '# allow: timeless-comments'")
-        print("  ONLY when:")
-        print("     - Temporal word is domain-specific (e.g., 'old logs' = stale)")
-        print("     - Describing current state, not history (e.g., 'has been configured')")
-        print("     - SQL/technical keywords (e.g., 'REPLACE', 'new connection')")
-        print("=" * 70)
 
     return exit_code
 
