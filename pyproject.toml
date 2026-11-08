@@ -248,7 +248,6 @@ warn_return_any = true
 warn_unused_configs = true
 show_error_codes = true
 pretty = true
-disable_error_code = ["no-untyped-call", "no-untyped-def"]
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]

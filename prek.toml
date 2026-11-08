@@ -131,7 +131,7 @@ types = ["python"]
 [[repos.hooks]]
 id = "check-private-test-imports"
 name = "Forbid private imports in tests"
-entry = "python scripts/prek_hooks/check_private_test_imports.py"
+entry = "python scripts/prek_hooks/check_private_test_imports.py --package new_feature"
 language = "system"
 types = ["python"]
 
