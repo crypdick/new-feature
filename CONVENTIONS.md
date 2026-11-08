@@ -1,21 +1,24 @@
 # Design conventions
 
-For advisory module naming and durable coding preferences, use the
-`coding-conventions` skill shipped with Strictify. Read only its relevant
-references; the project-specific decisions below remain canonical.
+The `coding-conventions` skill shipped with Strictify provides advisory guidance.
+Project-specific conventions below take precedence.
 
 ## Composition over inheritance
 
-Combine small functions and plain objects directly. Add inheritance only when there is a real substitutability relationship, not to share incidental code.
+Prefer small functions and plain objects. Use inheritance for substitutability,
+not incidental code reuse.
 
 ## Parse, don't validate
 
-Turn untrusted or unstructured inputs into typed values at the boundary. Pass parsed values to downstream code instead of repeatedly checking raw primitives.
+Parse untrusted or unstructured inputs into typed values at boundaries so
+downstream code can rely on them.
 
 ## Semantic types
 
-When a primitive starts carrying domain meaning, give it a name with `typing.NewType` or a focused type alias. Avoid passing anonymous `str`, `int`, or `dict` values through domain code once the concept matters.
+Use `typing.NewType` or focused type aliases when domain names clarify contracts
+or help prevent mix-ups. Plain primitives are fine when their meaning is clear.
 
 ## Code and docs stay coupled
 
-When you document a value or invariant in prose, leave a short `NOTE:` at the code site that points back to the document. Update both in the same change.
+Update docs alongside behavior changes. Add a short `NOTE:` linking code to docs
+when it helps keep a non-obvious value or invariant in sync.
