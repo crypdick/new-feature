@@ -17,30 +17,16 @@ from new_feature.help_text import (
     TOP_LEVEL_EPILOG,
 )
 
-_COMMANDS = frozenset({
-    "create",
-    "setup",
-    "merge",
-    "exec",
-    "teardown",
-    "list",
-    "status",
-    "doctor",
-    "path",
-    "completion",
-    "prune",
-    "changes",
-    # Keep unsupported command names reserved so shorthand cannot create features with them.
-    "codex-hook",
-    "claude-hook",
-    "install-rules",
-    "install-codex-hook",
-    "install-claude-hook",
-})
+# Retired command names remain unavailable as shorthand feature names.
+_RETIRED_COMMANDS = frozenset({"codex-hook", "claude-hook", "install-codex-hook", "install-claude-hook"})
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser for every supported lifecycle command."""
+    return _build_parser()[0]
+
+
+def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
     parser = argparse.ArgumentParser(
         prog="new-feature",
         description="Create, merge, and clean up isolated feature worktrees.",
@@ -57,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=CREATE_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    create.set_defaults(accepts_feature_name=True)
     create.add_argument("name", metavar="NAME", help="descriptive feature name; normalized to a slug")
     agent_selection = create.add_mutually_exclusive_group()
     agent_selection.add_argument(
@@ -138,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="stash uncommitted target changes during the merge and restore them afterwards",
     )
+    merge.set_defaults(accepts_feature_name=True)
     merge.add_argument("name", metavar="NAME", help="feature name or slug shown by `new-feature list`")
     merge.add_argument(
         "git_args",
@@ -154,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="Example:\n  new-feature exec billing-webhooks -- uv run pytest",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    execution.set_defaults(accepts_feature_name=True)
     execution.add_argument("name", metavar="NAME", help="exact feature name or normalized slug")
     execution.add_argument(
         "argv", nargs=argparse.REMAINDER, metavar="COMMAND", help="executable and arguments"
@@ -171,6 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    teardown.set_defaults(accepts_feature_name=True)
     teardown.add_argument(
         "name",
         metavar="NAME",
@@ -231,14 +221,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rules.set_defaults(command="install-rules")
 
-    return parser
+    return parser, subparsers.choices
+
+
+def command_names(*, feature_names: bool = False, json_output: bool = False) -> tuple[str, ...]:
+    """Derive command capabilities from the actual argument definitions."""
+    _, commands = _build_parser()
+    return tuple(
+        name
+        for name, parser in commands.items()
+        if (not feature_names or parser.get_default("accepts_feature_name"))
+        and (not json_output or parser.get_default("json_output") is False)
+    )
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse a command-line argument list into a lifecycle command request."""
-    if argv and argv[0] not in _COMMANDS and not argv[0].startswith("-"):
+    parser, commands = _build_parser()
+    if argv and argv[0] not in commands and argv[0] not in _RETIRED_COMMANDS and not argv[0].startswith("-"):
         argv = ["create", *argv]
-    parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
         parser.error("feature name or subcommand is required")
@@ -277,13 +278,14 @@ def wants_json(argv: list[str]) -> bool:
     if "--json" not in argv:
         return False
     command = argv[0]
-    return command in {"list", "status", "doctor", "create", "prune", "changes"} or (
-        command not in _COMMANDS and not command.startswith("-")
+    return command in command_names(json_output=True) or (
+        command not in command_names() and command not in _RETIRED_COMMANDS and not command.startswith("-")
     )
 
 
 def _add_workspace_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     path = subparsers.add_parser("path", help="print the absolute path of an exact managed feature")
+    path.set_defaults(accepts_feature_name=True)
     path.add_argument("name", metavar="NAME")
 
     completion = subparsers.add_parser("completion", help="print shell completion integration")
@@ -302,6 +304,7 @@ def _add_workspace_commands(subparsers: argparse._SubParsersAction[argparse.Argu
     )
 
     changes = subparsers.add_parser("changes", help="inspect staged, working-tree, and untracked changes")
+    changes.set_defaults(accepts_feature_name=True)
     changes.add_argument("name", metavar="NAME")
     changes.add_argument("--json", dest="json_output", action="store_true")
     changes.add_argument("--expected-generation", metavar="TOKEN", help="refuse a replaced feature")

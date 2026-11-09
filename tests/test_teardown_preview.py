@@ -205,4 +205,4 @@ def test_teardown_preview_reports_tracked_changes(tmp_path: Path, monkeypatch, c
     assert main(["feature", "--no-agent"]) == 0
     (tmp_path / ".worktrees/feature/README.md").write_text("dirty", encoding="utf-8")
     assert main(["teardown", "feature", "--dry-run"]) == 1
-    assert "uncommitted changes" in capsys.readouterr().out
+    assert "uncommitted tracked changes" in capsys.readouterr().out

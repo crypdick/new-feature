@@ -5,13 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path  # noqa: TC003 - beartype requires annotation types at runtime
 
+from new_feature.cli_parser import command_names
 from new_feature.control_checkout import require_managed_worktree
 from new_feature.errors import NewFeatureError
 from new_feature.manifest import load_manifest
 from new_feature.slug import feature_key, slugify
-
-_COMMANDS = "create setup merge exec teardown list status doctor path prune changes completion install-rules"
-_FEATURE_COMMANDS = "create merge exec teardown path changes"
 
 _BASH_COMPLETION = r"""_new_feature() {
     local current="${COMP_WORDS[COMP_CWORD]}"
@@ -20,7 +18,7 @@ _BASH_COMPLETION = r"""_new_feature() {
         mapfile -t COMPREPLY < <(compgen -W '@COMMANDS@' -- "$current")
     elif (( COMP_CWORD == 2 )); then
         case "${COMP_WORDS[1]}" in
-            create|merge|exec|teardown|path|changes)
+            @FEATURE_CASE@)
                 mapfile -t COMPREPLY < <(compgen -W "$(new-feature completion --features 2>/dev/null)" -- "$current")
                 ;;
             completion)
@@ -37,7 +35,7 @@ _ZSH_COMPLETION = r"""_new_feature() {
         compadd -- @COMMANDS@
     elif (( CURRENT == 3 )); then
         case "$words[2]" in
-            create|merge|exec|teardown|path|changes)
+            @FEATURE_CASE@)
                 local -a features
                 features=("${(@f)$(new-feature completion --features 2>/dev/null)}")
                 compadd -- "${features[@]}"
@@ -81,6 +79,9 @@ def print_shell_completion(shell: str) -> int:
     if shell not in scripts:
         raise NewFeatureError(f"unsupported completion shell: {shell}")
     sys.stdout.write(
-        scripts[shell].replace("@COMMANDS@", _COMMANDS).replace("@FEATURE_COMMANDS@", _FEATURE_COMMANDS)
+        scripts[shell]
+        .replace("@COMMANDS@", " ".join(command_names()))
+        .replace("@FEATURE_COMMANDS@", " ".join(command_names(feature_names=True)))
+        .replace("@FEATURE_CASE@", "|".join(command_names(feature_names=True)))
     )
     return 0

@@ -121,17 +121,22 @@ def create_worktree(root: Path, *, branch: str, worktree: Path, target_branch: s
 
 def import_worktree(root: Path, *, branch: str, worktree: Path, source: str) -> bool:
     """Check out an existing branch without hooks, filters, or filesystem monitors."""
-    ref = run_git(
-        root, "rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", source, capture=True
-    ).stdout.strip()
-    if not ref.startswith(("refs/heads/", "refs/remotes/")) or ref.endswith("/HEAD"):
-        raise NewFeatureError("--from requires an existing local or remote branch")
-    owns_branch = ref != f"refs/heads/{branch}"
+    ref, owns_branch = import_source(root, branch=branch, source=source)
     options = inert_git_options(root)
     worktree.parent.mkdir(parents=True, exist_ok=True)
     arguments = ["-b", branch, str(worktree), ref] if owns_branch else [str(worktree), branch]
     run_git(root, *options, "worktree", "add", *arguments)
     return owns_branch
+
+
+def import_source(root: Path, *, branch: str, source: str) -> tuple[str, bool]:
+    """Resolve an import's branch ownership before recording durable creation intent."""
+    ref = run_git(
+        root, "rev-parse", "--symbolic-full-name", "--verify", "--end-of-options", source, capture=True
+    ).stdout.strip()
+    if not ref.startswith(("refs/heads/", "refs/remotes/")) or ref.endswith("/HEAD"):
+        raise NewFeatureError("--from requires an existing local or remote branch")
+    return ref, ref != f"refs/heads/{branch}"
 
 
 def inert_git_options(root: Path) -> list[str]:
@@ -409,7 +414,7 @@ def remove_worktree_and_branch(
         else:
             raise
     if branch is not None:
-        run_git(root, "branch", "-D" if force or force_branch else "-d", branch, capture=True)
+        run_git(root, "branch", "-D" if force_branch else "-d", branch, capture=True)
 
 
 def run_git(cwd: Path, *args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:

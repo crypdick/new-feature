@@ -16,6 +16,7 @@ from filelock import FileLock, Timeout
 from new_feature.atomic_file import atomic_text_write
 from new_feature.errors import NewFeatureError
 from new_feature.lifecycle import now
+from new_feature.slug import feature_key, slugify
 
 MANIFEST_DIR = ".new-feature"
 MANIFEST_FILE = "manifest.toml"
@@ -39,6 +40,7 @@ _FEATURE_FIELDS = {
     "env",
     "owns_branch",
     "generation",
+    "allocated_ports",
 }
 
 
@@ -58,6 +60,7 @@ class FeatureRecord:
     env: dict[str, str] = field(default_factory=dict)
     owns_branch: bool = True
     generation: str = ""
+    allocated_ports: list[str] | None = None
 
 
 @dataclass
@@ -151,6 +154,11 @@ def load_manifest(repo_root: Path) -> Manifest:
         raise NewFeatureError(f"invalid feature manifest: {exc}") from exc
     version = _parse_version(data.get("version", 1))
     features = _parse_features(data.get("features", {}))
+    paths = [(repo_root / record.worktree).resolve() for record in features.values()]
+    if any(path == repo_root.resolve() or not path.is_relative_to(repo_root.resolve()) for path in paths):
+        raise NewFeatureError("feature manifest worktree resolves outside its control checkout")
+    if len(set(paths)) != len(paths):
+        raise NewFeatureError("feature manifest contains duplicate resolved worktrees")
     return Manifest(version=MANIFEST_VERSION if version == 1 else version, features=features)
 
 
@@ -164,7 +172,22 @@ def _parse_version(value: object) -> int:
 
 def _parse_features(value: object) -> dict[str, FeatureRecord]:
     table = _table(value, location="features")
-    return {key: _parse_feature(key, raw) for key, raw in table.items()}
+    features = {key: _parse_feature(key, raw) for key, raw in table.items()}
+    paths: set[str] = set()
+    branches: set[str] = set()
+    for key, record in features.items():
+        path = Path(record.worktree)
+        if record.slug != slugify(record.slug) or key != feature_key(record.slug):
+            raise NewFeatureError(f"feature manifest entry {key} has inconsistent slug or key")
+        if record.branch == record.target_branch:
+            raise NewFeatureError(f"feature manifest entry {key} branch must differ from target_branch")
+        if path.is_absolute() or ".." in path.parts or path == Path():
+            raise NewFeatureError(f"feature manifest entry {key} worktree must be a contained relative path")
+        if path.as_posix() in paths or record.branch in branches:
+            raise NewFeatureError("feature manifest contains duplicate worktrees or branches")
+        paths.add(path.as_posix())
+        branches.add(record.branch)
+    return features
 
 
 def _parse_feature(key: str, value: object) -> FeatureRecord:
@@ -186,7 +209,26 @@ def _parse_feature(key: str, value: object) -> FeatureRecord:
         env=_string_map(raw.get("env", {}), location=f"features.{key}.env"),
         owns_branch=_owns_branch(raw.get("owns_branch", True)),
         generation=_optional_string(raw, "generation", entry=key),
+        allocated_ports=_allocated_ports(raw.get("allocated_ports")),
     )
+
+
+def _allocated_ports(value: object) -> list[str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or any(
+        not isinstance(port, str)
+        or not port.isascii()
+        or not port.isdecimal()
+        or len(port) > 5
+        or not 1 <= int(port) <= 65535
+        or str(int(port)) != port
+        for port in value
+    ):
+        raise NewFeatureError("feature manifest allocated_ports must be a list of TCP port strings")
+    if len(set(value)) != len(value):
+        raise NewFeatureError("feature manifest allocated_ports must be unique")
+    return cast("list[str]", value)
 
 
 def _table(value: object, *, location: str) -> RawTable:
@@ -246,6 +288,7 @@ def save_manifest(repo_root: Path, manifest: Manifest) -> None:
                 "env": record.env,
                 "owns_branch": record.owns_branch,
                 "generation": record.generation,
+                **({"allocated_ports": record.allocated_ports} if record.allocated_ports is not None else {}),
             }
             for key, record in sorted(manifest.features.items())
         },

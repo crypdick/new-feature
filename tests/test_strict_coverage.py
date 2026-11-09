@@ -422,9 +422,7 @@ def test_merge_rejects_dirty_worktree_and_aborts_failed_post_merge(
     assert not (tmp_path / ".git" / "MERGE_HEAD").exists()
 
 
-def test_teardown_after_merge_uses_non_force_branch_delete(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_teardown_removes_integrated_feature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from tests.conftest import init_git_repo
 
     init_git_repo(tmp_path, '[project]\nname = "demo"\n')

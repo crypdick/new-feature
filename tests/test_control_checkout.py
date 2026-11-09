@@ -60,13 +60,14 @@ def test_ordinary_linked_checkout_can_own_managed_features(tmp_path: Path, monke
 def test_ambiguous_manifest_ownership_fails(tmp_path: Path, monkeypatch, capsys):
     init_git_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
-    assert main(["first", "--no-agent"]) == 0
     linked = tmp_path / "linked"
     subprocess.run(["git", "worktree", "add", "-b", "linked", str(linked)], cwd=tmp_path, check=True)
-    record = load_manifest(tmp_path).features["first"]
-    record.worktree = str(tmp_path / record.worktree)
-    save_manifest(linked, Manifest(features={"first": record}))
-    monkeypatch.chdir(tmp_path / ".worktrees/first")
+    monkeypatch.chdir(linked)
+    assert main(["first", "--no-agent"]) == 0
+    record = load_manifest(linked).features["first"]
+    record.worktree = "linked/.worktrees/first"
+    save_manifest(tmp_path, Manifest(features={"first": record}))
+    monkeypatch.chdir(linked / ".worktrees/first")
     assert main(["list"]) == 1
     assert "ambiguous" in capsys.readouterr().err
 

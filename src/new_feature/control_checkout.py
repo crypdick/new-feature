@@ -27,10 +27,11 @@ def control_root(cwd: Path) -> Path:
     return next(iter(owners), current)
 
 
-def require_managed_worktree(root: Path, worktree: Path, branch: str) -> Path:
+def require_managed_worktree(root: Path, worktree: Path, branch: str | None) -> Path:
     """Require a recorded path and branch to match a registered Git checkout."""
     path = worktree.resolve()
-    if not path.is_dir() or worktree_inventory(root).get(path) != branch:
+    inventory = worktree_inventory(root)
+    if not path.is_dir() or path not in inventory or inventory[path] != branch:
         raise NewFeatureError(f"feature worktree or branch is missing or mismatched: {worktree}")
     return path
 

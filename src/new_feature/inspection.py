@@ -6,7 +6,12 @@ import json
 import sys
 from pathlib import Path  # noqa: TC003 - beartype needs annotation types at runtime
 
-from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
+from new_feature.config import (
+    ProjectConfig,
+    config_fingerprint,
+    config_fingerprint_changed,
+    load_project_config,
+)
 from new_feature.feature_state import FeatureState, inspect_feature
 from new_feature.manifest import (
     FeatureRecord,
@@ -129,7 +134,7 @@ def _worktree_warning(record: FeatureRecord, state: FeatureState) -> None:
 
 def warn_if_config_changed(config: ProjectConfig, record: FeatureRecord) -> None:
     """Warn when a feature retains allocations from an earlier project configuration."""
-    if record.config_fingerprint and record.config_fingerprint != config_fingerprint(config):
+    if config_fingerprint_changed(record.config_fingerprint, config_fingerprint(config)):
         sys.stderr.write(
             f"new-feature: warning: project configuration changed since {record.slug} was created\n"
         )

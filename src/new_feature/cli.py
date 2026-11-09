@@ -8,11 +8,12 @@ from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 from new_feature import agent as agent_module
+from new_feature.allocator import feature_environment
 from new_feature.changes import inspect_changes
 from new_feature.cli_parser import parse_args, wants_json
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, load_project_config
-from new_feature.control_checkout import control_root
+from new_feature.control_checkout import control_root, require_managed_worktree
 from new_feature.creation import CreationOptions, create_feature
 from new_feature.dirty_target import ensure_changes_clear_of_merge, uncommitted_changes_set_aside
 from new_feature.errors import NewFeatureError
@@ -188,7 +189,7 @@ def _commit_feature_merge(
         run_commands(
             config.post_merge,
             cwd=root,
-            env=record.env,
+            env=feature_environment(root, record),
             failure_log=merge_failure_log(root, record.slug, phase="post-merge"),
         )
         if transaction.pending_commit():
@@ -255,7 +256,7 @@ def _publish(root: Path, config: ProjectConfig, record: FeatureRecord) -> None:
     run_commands(
         config.post_push,
         cwd=root,
-        env=record.env,
+        env=feature_environment(root, record),
         failure_log=merge_failure_log(root, record.slug, phase="post-push"),
     )
 
@@ -297,7 +298,7 @@ def _merge(
             raise NewFeatureError(f"unknown feature: {name}")
     require_setup_complete(record)
     warn_if_config_changed(config, record)
-    worktree = root / record.worktree
+    worktree = require_managed_worktree(root, root / record.worktree, record.branch)
     _require_feature_clean(worktree, include_untracked=include_untracked)
     with target_merge_lock(root):
         # NOTE: docs/ARCHITECTURE.md documents Git-derived integration; README.md covers push retries.
@@ -332,9 +333,10 @@ def _merge(
     run_commands(
         config.pre_merge,
         cwd=worktree,
-        env=record.env,
+        env=feature_environment(root, record),
         failure_log=merge_failure_log(root, record.slug, phase="pre-merge"),
     )
+    require_managed_worktree(root, worktree, record.branch)
     _require_feature_clean(worktree, include_untracked=include_untracked)
     local_files = local_paths(worktree, config.safe_to_delete) if include_untracked else None
     with (

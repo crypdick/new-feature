@@ -18,7 +18,7 @@ from new_feature.config import (
     SlugEnvSpec,
 )
 from new_feature.errors import NewFeatureError
-from new_feature.manifest import Manifest
+from new_feature.manifest import FeatureRecord, Manifest
 
 
 def allocate_env(
@@ -33,26 +33,45 @@ def allocate_env(
 ) -> dict[str, str]:
     """Allocate the environment exported to a feature's setup and agent processes."""
     # NOTE: README.md documents exported variables and the scope of allocator reservations.
-    env = {
+    env = _feature_identity(name, slug, branch, worktree, repo_root)
+    reserved_ports = {
+        value
+        for record in manifest.features.values()
+        for value in (record.env.values() if record.allocated_ports is None else record.allocated_ports)
+    }
+    for key, spec in config.env.items():
+        if isinstance(spec, PortEnvSpec):
+            try:
+                env[key] = _allocate_port(key, spec, reserved_ports)
+            except NewFeatureError as exc:
+                if any(record.allocated_ports is None for record in manifest.features.values()):
+                    raise NewFeatureError(
+                        f"{exc}; legacy features reserve all recorded numeric values; "
+                        "recreate legacy features to record precise port reservations"
+                    ) from exc
+                raise
+            reserved_ports.add(env[key])
+        else:
+            env[key] = _allocate_value(key, spec, manifest, slug, repo_root)
+    return env
+
+
+def feature_environment(root: Path, record: FeatureRecord) -> dict[str, str]:
+    """Build child environment with authoritative feature identity, including legacy records."""
+    return {
+        **record.env,
+        **_feature_identity(record.name, record.slug, record.branch, root / record.worktree, root),
+    }
+
+
+def _feature_identity(name: str, slug: str, branch: str, worktree: Path, repo_root: Path) -> dict[str, str]:
+    return {
         "NEW_FEATURE_NAME": name,
         "NEW_FEATURE_SLUG": slug,
         "NEW_FEATURE_BRANCH": branch,
         "NEW_FEATURE_WORKTREE": str(worktree),
         "NEW_FEATURE_REPO_ROOT": str(repo_root),
     }
-    reserved_ports = {
-        value
-        for record in manifest.features.values()
-        for key, value in record.env.items()
-        if isinstance(config.env.get(key), PortEnvSpec)
-    }
-    for key, spec in config.env.items():
-        if isinstance(spec, PortEnvSpec):
-            env[key] = _allocate_port(key, spec, reserved_ports)
-            reserved_ports.add(env[key])
-        else:
-            env[key] = _allocate_value(key, spec, manifest, slug, repo_root)
-    return env
 
 
 def _allocate_value(

@@ -154,7 +154,7 @@ def test_list_and_doctor_report_config_drift(
     assert "alpha\tok" in capsys.readouterr().out
 
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "demo"\n\n[tool.new-feature]\npush = true\n', encoding="utf-8"
+        '[project]\nname = "demo"\n\n[tool.new-feature]\nsetup = ["true"]\n', encoding="utf-8"
     )
     assert cli.main(["doctor"]) == 1
     assert "config-drift" in capsys.readouterr().out
@@ -302,8 +302,8 @@ def test_standalone_config_errors(tmp_path: Path, config: str, message: str) -> 
 def test_config_fingerprint_is_stable_and_sensitive() -> None:
     baseline = config_fingerprint(ProjectConfig())
     assert baseline == config_fingerprint(ProjectConfig())
-    assert baseline != config_fingerprint(ProjectConfig(push=True))
-    assert baseline != config_fingerprint(ProjectConfig(create_prompt="custom"))
+    assert baseline == config_fingerprint(ProjectConfig(push=True))
+    assert baseline == config_fingerprint(ProjectConfig(create_prompt="custom"))
     assert config_fingerprint(ProjectConfig(env={"VALUE": PortEnvSpec()})) != config_fingerprint(
         ProjectConfig(env={"VALUE": IntegerEnvSpec()})
     )
@@ -334,7 +334,7 @@ def test_lifecycle_warns_when_config_changed(
         config_fingerprint=config_fingerprint(ProjectConfig()),
     )
 
-    cli.warn_if_config_changed(ProjectConfig(push=True), record)
+    cli.warn_if_config_changed(ProjectConfig(setup=["true"]), record)
     assert "configuration changed" in capsys.readouterr().err
 
 

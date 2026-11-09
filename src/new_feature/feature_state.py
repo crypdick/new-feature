@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from new_feature.config import config_fingerprint_changed
+from new_feature.control_checkout import require_managed_worktree
 from new_feature.errors import NewFeatureError
 from new_feature.git import (
     branch_exists,
@@ -93,6 +95,8 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
     clean = None
     worktree_error = None
     try:
+        if worktree_exists:
+            require_managed_worktree(root, worktree, record.branch)
         clean = worktree_is_clean(worktree, inert=record.status == "inert") if worktree_exists else None
     except NewFeatureError as exc:
         # NOTE: docs/ARCHITECTURE.md documents inspection of unreadable worktrees.
@@ -110,7 +114,7 @@ def inspect_feature(root: Path, record: FeatureRecord, current_fingerprint: str)
         clean=clean,
         worktree_error=worktree_error,
         integration=integration,
-        config_drift=bool(record.config_fingerprint) and record.config_fingerprint != current_fingerprint,
+        config_drift=config_fingerprint_changed(record.config_fingerprint, current_fingerprint),
     )
 
 
@@ -135,7 +139,7 @@ def reusable_feature_worktree(root: Path, record: FeatureRecord) -> Path:
             f"feature cannot be reopened: {record.slug} ({detail}); "
             "run `new-feature doctor --repair` before retrying"
         )
-    return worktree
+    return require_managed_worktree(root, worktree, record.branch)
 
 
 def require_setup_complete(record: FeatureRecord) -> None:
