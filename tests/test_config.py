@@ -61,8 +61,8 @@ def test_local_config_can_disable_shared_auto_teardown(tmp_path: Path):
     assert load_project_config(tmp_path).auto_teardown is False
 
 
-def test_auto_teardown_affects_config_fingerprint():
-    assert config_fingerprint(ProjectConfig()) != config_fingerprint(ProjectConfig(auto_teardown=True))
+def test_auto_teardown_does_not_affect_resource_fingerprint():
+    assert config_fingerprint(ProjectConfig()) == config_fingerprint(ProjectConfig(auto_teardown=True))
 
 
 def test_global_config_supplies_default_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -245,4 +245,32 @@ def test_safe_to_delete_rejects_unsafe_patterns(tmp_path, pattern):
     encoded = '"!keep"' if pattern == "!keep" else '"\\u0000invalid"'
     (tmp_path / ".new-feature.toml").write_text(f"safe_to_delete=[{encoded}]\n", encoding="utf-8")
     with pytest.raises(NewFeatureError, match="cannot contain negation or NUL"):
+        load_project_config(tmp_path)
+
+
+@pytest.mark.parametrize("filename", [".new-feature.toml", "pyproject.toml", ".new-feature.local.toml"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "NEW_FEATURE_NAME",
+        "NEW_FEATURE_SLUG",
+        "NEW_FEATURE_BRANCH",
+        "NEW_FEATURE_WORKTREE",
+        "NEW_FEATURE_REPO_ROOT",
+        "NEW_FEATURE_FUTURE",
+    ],
+)
+def test_config_reserves_feature_identity_namespace(tmp_path: Path, filename: str, key: str):
+    header = "[tool.new-feature.env]" if filename == "pyproject.toml" else "[env]"
+    (tmp_path / filename).write_text(f'{header}\n{key} = {{ value = "wrong" }}\n')
+    with pytest.raises(NewFeatureError, match="reserved for feature identity"):
+        load_project_config(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("allocator", "bounds"), [("integer", "min=65536"), ("integer", "max=-1"), ("port", "max=80")]
+)
+def test_config_checks_effective_allocation_bounds(tmp_path: Path, allocator: str, bounds: str):
+    (tmp_path / ".new-feature.toml").write_text(f'[env]\nVALUE={{allocate="{allocator}",{bounds}}}\n')
+    with pytest.raises(NewFeatureError, match="min must not exceed max"):
         load_project_config(tmp_path)

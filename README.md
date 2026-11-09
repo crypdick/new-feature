@@ -193,6 +193,8 @@ A nonzero exit stops the operation.
 
 Commands and launched agents receive allocated values plus `NEW_FEATURE_NAME`,
 `NEW_FEATURE_SLUG`, `NEW_FEATURE_BRANCH`, `NEW_FEATURE_WORKTREE`, and `NEW_FEATURE_REPO_ROOT`.
+The `NEW_FEATURE_*` namespace is reserved: configuration cannot override these values.
+Each invocation derives identity from its managed feature record, including legacy records.
 Existing shells and agent sessions don't inherit these values. Run manual commands with
 `new-feature exec NAME -- COMMAND ...` to restore the recorded environment and working
 directory, for example `new-feature exec my-feature -- uv run pytest`. Names normalize
@@ -204,7 +206,11 @@ Multiple `exec` commands can run in one feature, such as a server and its tests.
 Creation, merge, teardown, and repair of that feature are refused while an `exec`
 command runs. Interrupted commands terminate their process group.
 
-Port reservations span all port variables in this repository. Availability checks don't
+Port reservations span all port variables in this repository and survive configuration
+renames or removal. Features created before reservation provenance was recorded
+conservatively reserve all numeric environment values; this can exhaust a range even
+when a value was not originally a port. Recreate those legacy features to restore precise
+reservations. Availability checks don't
 hold ports open or reserve them against other repositories or programs. Integer reservations
 are per variable. Without explicit bounds, ports use 1024-65535 and integers use 0-65535.
 
@@ -214,6 +220,12 @@ Use `slug` for readable namespaces in the form `prefix-feature-slug`. Paths retu
 command's working directory.
 
 ## Lifecycle
+
+Resource drift tracks the target branch, setup commands, and allocated environment
+specifications. Agent preferences, prompts, and merge/push/teardown commands take effect
+on invocation without marking resources unhealthy. Legacy whole-configuration fingerprints
+cannot distinguish these categories; their drift is not reported. Recreate legacy features
+to establish resource drift tracking.
 
 Creating an active feature again reuses its worktree and environment without
 rerunning setup. If setup fails, new-feature attempts cleanup. If cleanup fails or

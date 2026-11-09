@@ -9,13 +9,13 @@ from pathlib import Path  # noqa: TC003 - runtime annotation checking
 from uuid import uuid4
 
 from new_feature import agent as agent_module
-from new_feature.allocator import allocate_env
+from new_feature.allocator import allocate_env, feature_environment
 from new_feature.commands import run_commands
-from new_feature.config import ProjectConfig, config_fingerprint, load_project_config
+from new_feature.config import PortEnvSpec, ProjectConfig, config_fingerprint, load_project_config
 from new_feature.control_checkout import require_managed_worktree
 from new_feature.errors import NewFeatureError
 from new_feature.feature_state import require_setup_complete, reusable_feature_worktree
-from new_feature.git import create_worktree, import_worktree, pull_target
+from new_feature.git import branch_exists, create_worktree, import_source, import_worktree, pull_target
 from new_feature.gitignore import ensure_generated_paths_ignored
 from new_feature.inspection import warn_if_config_changed, write_json
 from new_feature.lifecycle import now
@@ -71,7 +71,7 @@ def create_feature(root: Path, name: str, options: CreationOptions) -> int:
             agent_command = _resolve_create_agent(config, no_agent=no_agent, agent_options=agent_options)
 
             record, created = _prepare_feature(root, name, config, options)
-            worktree, env = root / record.worktree, record.env
+            worktree, env = root / record.worktree, feature_environment(root, record)
             if (created and options.from_ref is None) or options.bootstrap:
                 record = _bootstrap_feature(root, record, config, imported=options.bootstrap)
             else:
@@ -123,7 +123,7 @@ def _preview_creation(root: Path, name: str, config: ProjectConfig) -> int:
         )
     else:
         reusable_feature_worktree(root, record)
-        env = record.env
+        env = feature_environment(root, record)
     for env_key, env_value in sorted(env.items()):
         sys.stdout.write(f"{env_key}={env_value}\n")
     return 0
@@ -198,9 +198,9 @@ def _prepare_feature(
         )
         owns_branch = True
         if options.from_ref is not None:
-            owns_branch = import_worktree(root, branch=slug, worktree=worktree, source=options.from_ref)
-        else:
-            create_worktree(root, branch=slug, worktree=worktree, target_branch=config.target_branch)
+            _, owns_branch = import_source(root, branch=slug, source=options.from_ref)
+        if worktree.exists() or worktree.is_symlink() or (owns_branch and branch_exists(root, slug)):
+            raise NewFeatureError(f"feature resources already exist: {slug}; inspect them before creating")
         # NOTE: README.md documents inert imports, branch ownership, and durable generation tokens.
         record = FeatureRecord(
             name=name,
@@ -214,9 +214,15 @@ def _prepare_feature(
             created_at=now(),
             config_fingerprint=config_fingerprint(config),
             env=env,
+            allocated_ports=[env[key] for key, spec in config.env.items() if isinstance(spec, PortEnvSpec)],
         )
         manifest.features[key] = record
         save_manifest(root, manifest)
+        if options.from_ref is not None:
+            import_worktree(root, branch=slug, worktree=worktree, source=options.from_ref)
+        else:
+            create_worktree(root, branch=slug, worktree=worktree, target_branch=config.target_branch)
+        require_managed_worktree(root, worktree, record.branch)
         return record, True
 
 
@@ -238,7 +244,8 @@ def _bootstrap_feature(
     root: Path, record: FeatureRecord, config: ProjectConfig, *, imported: bool
 ) -> FeatureRecord:
     try:
-        run_commands(config.setup, cwd=root / record.worktree, env=record.env)
+        run_commands(config.setup, cwd=root / record.worktree, env=feature_environment(root, record))
+        require_managed_worktree(root, root / record.worktree, record.branch)
         return record_feature_status(root, feature_key(record.slug), status="active")
     except BaseException as setup_error:
         if imported:

@@ -17,16 +17,28 @@ The Python package lives in `src/new_feature/`. Start with these modules:
 - `control_checkout.py`: verified ownership lookup across registered Git worktrees.
 - `feature_state.py` and `recovery.py`: inspection and repair.
 - `agent.py`: agent selection, prompts, and launch.
-- `hook_policy.py`, `rule_checker.py`, and `hook_install.py`: worktree policy,
+- `hook_policy.py`, `shell_commands.py`, `rule_checker.py`, and `hook_install.py`: worktree policy,
   neutral i-insist checker, and rule installation for new-feature.
 
-Each original checkout owns its manifest. Creation records `initializing` before setup
-and `active` after success. Inspection reports unfinished setup as `setup-incomplete`.
+Each original checkout owns its manifest. Creation records durable `initializing`
+intent before creating Git resources, then `active` after setup succeeds. Existing
+paths or owned-branch name collisions are refused before recording intent.
+Inspection reports unfinished creation or setup as `setup-incomplete`.
 Existing-branch imports instead record `inert` until explicit bootstrap. Imports disable
 checkout hooks, filters, and filesystem monitors; configured setup and agents stay stopped.
 Failed bootstrap preserves the imported checkout for inspection and retry. The manifest
 records branch ownership separately: teardown and repair retain attached existing local
 branches, while branches created by the tool remain eligible for deletion.
+If Git resource creation fails, the intent remains inspectable. Doctor removes intent
+with no resources and missing-worktree imports without deleting their existing branches,
+even when those branches are unmerged. Interrupted creation with surviving resources
+requires inspection and normal teardown protections.
+
+Manifest parsing checks canonical slug/key relationships, unique branch and resolved
+worktree claims, and relative worktree paths contained within the control checkout.
+Lifecycle operations verify recorded paths and branches against Git's registered
+worktree inventory. Inspection reports mismatches as `worktree-error`; reopening,
+execution, merge, and teardown refuse them, including forced teardown.
 
 Each new feature receives a persisted generation token. Change inspection holds the same
 shared execution lock as `exec`, verifies the manifest and checkout identity before and
@@ -99,6 +111,11 @@ failure does not roll back the completed Git merge. Normal teardown checks track
 changes, branch integration, processes, and preservation of non-disposable local
 files before requesting forced Git worktree removal. Preservation is rechecked
 after cleanup; this prevents Git's disregard for ignored files from losing work.
+Checkout identity and branch integration are also rechecked after configured cleanup:
+cleanup-created commits must not be discarded by ordinary teardown. Worktree removal
+force and branch deletion force are separate Git-helper choices. After proving integration
+against the configured target, teardown may force branch deletion because Git's own
+`branch -d` checks a possibly stale upstream and cannot recognize patch-equivalent work.
 See [Local file transfer](https://new-feature.ricardodecal.com/#local-file-transfer) for policy and exclusions.
 
 ## Agent guards
@@ -110,7 +127,12 @@ Guards enforce these policies through i-insist:
   `EnterWorktree` with a `path` can still enter an existing worktree.
 - Edit on a feature branch, except before the first commit or when editing
   ignored, untracked paths. Tracked files remain protected even under ignored
-  directories; symlinks are checked against their resolved destinations.
+  directories. Content writes protect both the named entry and its resolved destination,
+  including symlinks from a feature checkout into the target checkout. Removal, rename,
+  link replacement and in-place editors protect the directory entry instead; removing
+  a feature checkout's symlink does not write its target. Utilities still follow
+  symlinks used as directory destinations unless their no-directory options apply,
+  and `sed --follow-symlinks` explicitly protects the content destination.
 - Merge into the target branch through `new-feature merge`. Merges on feature
   branches, `--continue`, `--abort`, `--quit`, help, and `git commit` remain allowed.
 - Arguments after the feature name pass through to `git merge`; supplying them skips
@@ -118,8 +140,15 @@ Guards enforce these policies through i-insist:
 
 Edit checks also cover common shell writes: output redirections, `tee`, in-place
 `sed` and `perl`, `cp`, `install`, `ln`, `mv`, `rm`, `touch`, and `truncate`.
-Guards recognize Git directory options and simple `cd` commands. They don't parse
-arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
+Guards recognize Git directory options, literal `cd` commands, subshell scopes and
+AND/OR lists, preserving shell's logical symlink-parent semantics. Leading assignments
+and current-shell `command`/`builtin` prefixes are recognized; external `env` and
+`sudo` invocations do not move the parent shell. Directory inference considers both
+outcomes of a command; a failed `cd` never moves the inferred directory.
+`CDPATH`/`PWD` overrides, relative `cd` with inherited `CDPATH`, dynamic `cd`, shell
+control flow, and `cd` combined with pipelines or background commands fail explicitly
+instead of guessing a checkout. Use separate simple commands in these cases.
+Guards don't parse arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
 Paths containing dollar signs are deferred to the post-command check rather than
 treated as literal paths in the current checkout. This lets commands copy changes
 into a worktree through `$W` and then run `git restore` in the target checkout.
@@ -130,9 +159,10 @@ redirections on the header and commands after the closing delimiter remain check
 Command substitutions inside expanding heredocs fall under the post-command check.
 A post-command rule covers those: before each shell command on the target branch, the
 edit check records tracked changes in each checkout's Git directory, covering the
-current directory and literal `cd` targets, one record per harness `tool_use_id`. After
-the command,
-any tracked file that is newly changed, changed again, or deleted is reported to the
+current directory and literal `cd` targets, one record per harness `tool_use_id`.
+Git diff content fingerprints include binary contents, file modes and symlink targets,
+so timestamp-preserving copies are detected and timestamp-only touches are ignored.
+After the command, any tracked file that is newly changed, changed again, or deleted is reported to the
 agent. The command's effects remain. Snapshots can detect changes but cannot tell which
 command made them. The report asks the agent to check `git status` and `git log` for a
 completed merge or concurrent edits before restoring anything. Move only edits you made

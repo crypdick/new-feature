@@ -25,7 +25,10 @@ def repair_feature(
     if (
         not state.worktree_exists
         and state.branch_exists
-        and state.integration in {IntegrationState.MERGED, IntegrationState.PATCH_EQUIVALENT}
+        and (
+            not record.owns_branch
+            or state.integration in {IntegrationState.MERGED, IntegrationState.PATCH_EQUIVALENT}
+        )
     ):
         remove_worktree_and_branch(
             root,

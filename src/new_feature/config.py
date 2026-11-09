@@ -209,6 +209,8 @@ def _optional_int(raw: RawTable, name: str, *, env_key: str) -> int | None:
 
 
 def _env_spec(key: str, raw: object) -> EnvSpec:
+    if key.startswith("NEW_FEATURE_"):
+        raise NewFeatureError(f"env name is reserved for feature identity: {key}")
     if not _ENV_NAME.fullmatch(key):
         raise NewFeatureError(f"env name must be a valid environment variable: {key}")
     if not isinstance(raw, dict):
@@ -245,13 +247,17 @@ def _parse_allocator(key: str, allocator: str, raw: RawTable) -> EnvSpec:
     # NOTE: README.md documents the default port and integer allocation bounds.
     match allocator:
         case "port":
-            minimum, maximum = _bounds(key, raw, default_minimum=1024, default_maximum=65535)
+            minimum, maximum = _bounds(
+                key, raw, default_minimum=PortEnvSpec.minimum, default_maximum=PortEnvSpec.maximum
+            )
             for field_name, field_value in (("min", minimum), ("max", maximum)):
                 if not 1 <= field_value <= 65535:
                     raise NewFeatureError(f"env spec {key}.{field_name} must be between 1 and 65535")
             return PortEnvSpec(minimum=minimum, maximum=maximum)
         case "integer":
-            minimum, maximum = _bounds(key, raw, default_minimum=0, default_maximum=65535)
+            minimum, maximum = _bounds(
+                key, raw, default_minimum=IntegerEnvSpec.minimum, default_maximum=IntegerEnvSpec.maximum
+            )
             return IntegerEnvSpec(minimum=minimum, maximum=maximum)
         case "name":
             max_length = _optional_int(raw, "max_length", env_key=key)
@@ -276,38 +282,30 @@ def _bounds(
     default_minimum: int,
     default_maximum: int,
 ) -> tuple[int, int]:
-    minimum = _optional_int(raw, "min", env_key=key)
-    maximum = _optional_int(raw, "max", env_key=key)
-    if minimum is not None and maximum is not None and minimum > maximum:
+    raw_minimum = _optional_int(raw, "min", env_key=key)
+    raw_maximum = _optional_int(raw, "max", env_key=key)
+    minimum = default_minimum if raw_minimum is None else raw_minimum
+    maximum = default_maximum if raw_maximum is None else raw_maximum
+    if minimum > maximum:
         raise NewFeatureError(f"env spec {key}.min must not exceed max")
-    return (
-        default_minimum if minimum is None else minimum,
-        default_maximum if maximum is None else maximum,
-    )
+    return minimum, maximum
 
 
 def config_fingerprint(config: ProjectConfig) -> str:
-    """Return a stable digest representing a normalized project configuration."""
+    """Fingerprint configuration frozen into feature resources and setup."""
     payload = {
         "target_branch": config.target_branch,
-        "default_agent": config.default_agent,
-        "agents": config.agents,
-        "create_prompt": config.create_prompt,
-        "setup_prompt": config.setup_prompt,
-        "pull_before_create": config.pull_before_create,
-        "push": config.push,
-        "auto-teardown": config.auto_teardown,
         "setup": config.setup,
-        "pre_merge": config.pre_merge,
-        "post_merge": config.post_merge,
-        # Omitted when empty so adding the key leaves existing fingerprints unchanged.
-        **({"post_push": config.post_push} if config.post_push else {}),
-        "teardown": config.teardown,
-        "safe_to_delete": config.safe_to_delete,
         "env": {key: _env_fingerprint(value) for key, value in sorted(config.env.items())},
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
+    return "resources-v1:" + hashlib.sha256(encoded).hexdigest()
+
+
+def config_fingerprint_changed(stored: str, current: str) -> bool:
+    """Compare resource fingerprints, ignoring legacy whole-configuration hashes."""
+    # Legacy digests cannot distinguish resource drift from changed invocation preferences.
+    return stored.startswith("resources-v1:") and stored != current
 
 
 def _env_fingerprint(spec: EnvSpec) -> dict[str, object]:

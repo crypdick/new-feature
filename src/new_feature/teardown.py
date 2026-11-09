@@ -7,8 +7,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from new_feature.allocator import feature_environment
 from new_feature.commands import run_commands
 from new_feature.config import ProjectConfig, load_project_config
+from new_feature.control_checkout import require_managed_worktree
 from new_feature.errors import NewFeatureError
 from new_feature.feature_state import IntegrationState, inspect_integration
 from new_feature.git import remove_worktree_and_branch, worktree_branch, worktree_is_clean
@@ -60,19 +62,13 @@ def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> in
         sys.stderr.write("new-feature: unmanaged or inert worktree; skipping configured teardown commands\n")
     else:
         warn_if_config_changed(config, target.record)
-        run_commands(config.teardown, cwd=target.worktree, env=target.record.env)
+        run_commands(config.teardown, cwd=target.worktree, env=feature_environment(root, target.record))
+    require_managed_worktree(root, target.worktree, target.branch)
     if not force:
-        # NOTE: README.md documents process checks before cleanup and immediately before removal.
-        require_no_worktree_processes(target.worktree)
-        if not worktree_is_clean(
-            target.worktree,
-            allow_untracked=True,
-            inert=target.record is not None and target.record.status == "inert",
-        ):
-            raise NewFeatureError(
-                "feature worktree has uncommitted tracked changes; pass --force to abandon them"
-            )
-        require_local_files_preserved(root, target.worktree, config.safe_to_delete)
+        # Cleanup can commit or switch branches, not merely dirty files.
+        refusals = _refusals(root, target, config)
+        if refusals:
+            raise NewFeatureError("; ".join(refusals))
     if Path.cwd().is_relative_to(target.worktree.resolve()):
         os.chdir(root)
     remove_worktree_and_branch(
@@ -82,7 +78,8 @@ def teardown(root: Path, name: str, *, force: bool, dry_run: bool = False) -> in
         # Git refuses ordinary untracked files even after their copies are verified.
         # NOTE: README.md documents safe deletion of preserved local files and excluded artifacts.
         force=True,
-        force_branch=not force,
+        # Integration was checked against our target, not Git's potentially stale upstream.
+        force_branch=True,
     )
     if target.record is not None:
         with manifest_lock(root):
@@ -111,6 +108,7 @@ def _resolve_target(root: Path, name: str, config: ProjectConfig) -> TeardownTar
         raise NewFeatureError(
             "feature worktree is missing; run `new-feature doctor --repair` to recover an integrated branch"
         )
+    require_managed_worktree(root, worktree, branch)
     return TeardownTarget(key, worktree, branch, target_branch, record)
 
 
@@ -121,7 +119,7 @@ def _refusals(root: Path, target: TeardownTarget, config: ProjectConfig) -> list
         allow_untracked=True,
         inert=target.record is not None and target.record.status == "inert",
     ):
-        refusals.append("feature worktree has uncommitted changes; pass --force to abandon them")
+        refusals.append("feature worktree has uncommitted tracked changes; pass --force to abandon them")
     if target.branch is None:
         refusals.append("unmanaged worktree is detached; pass --force to abandon it")
     elif (

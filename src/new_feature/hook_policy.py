@@ -6,33 +6,23 @@ import hashlib
 import itertools
 import json
 import re
-import shlex
 import subprocess
 import time
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NewType, TypedDict
+from typing import NewType, TypedDict
 
 from new_feature.config import load_project_config
 from new_feature.git import git_environment
 from new_feature.manifest import target_merge_lock_held
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
+from new_feature.shell_commands import commands_with_cwd, parse_shell_commands
 
 BranchName = NewType("BranchName", str)
 WorktreeAction = NewType("WorktreeAction", str)
 
 _WORKTREE_ACTIONS = {"add", "remove"}
-_SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", ""}
 _ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*\Z")
-# Preserve quoting here so a literal '<<' cannot start a heredoc. shlex removes it.
-_HEREDOC_TOKENS = re.compile(
-    r"\#[^\n]*|"
-    r"""(?:[^\s;&|()<>'"\\]+|\\[\s\S]|'[^']*'|"(?:\\[\s\S]|[^"\\])*")+|"""
-    r"<<-|[;&|()<>]+"
-)
 _COMMAND_WRAPPERS = {"command", "exec"}
 _ENV_OPTIONS_WITH_VALUES = {"-C", "--chdir", "-S", "--split-string", "-u", "--unset"}
 _SUDO_OPTIONS_WITH_VALUES = {
@@ -78,7 +68,7 @@ _GIT_OPTIONS_WITH_VALUES = {
 class _Snapshot(TypedDict):
     """Tracked target changes plus the merge state that explains staged ones."""
 
-    changes: dict[str, list[int] | None]
+    changes: dict[str, str]
     unstaged: list[str]
     # HEAD, MERGE_HEAD, and whether the target merge lock is held.
     merge: list[str | bool]
@@ -93,14 +83,29 @@ class GitContext:
     target_branch: BranchName
 
 
-def blocks_target_edit(targets: tuple[Path, ...], *, cwd: Path) -> bool:
-    """Check whether any target belongs to the protected branch."""
+@dataclass(frozen=True)
+class WriteTarget:
+    """Distinguish content writes from changes to a directory entry itself."""
+
+    path: Path
+    follow_symlinks: bool = True
+
+
+def blocks_target_edit(targets: tuple[Path | WriteTarget, ...], *, cwd: Path) -> bool:
+    """Protect both the named entry and any content destination it follows."""
     for target in targets:
-        context = _git_context_for(target, cwd=cwd)
-        if context is not None and context.branch == context.target_branch:
-            if _is_ignored_untracked_path(target, cwd=cwd, root=context.root):
-                continue
-            return True
+        write = target if isinstance(target, WriteTarget) else WriteTarget(target)
+        path = cwd / write.path.expanduser()
+        entry = path.parent.resolve() / path.name
+        destinations = {entry, entry.resolve()} if write.follow_symlinks else {entry}
+        for destination in destinations:
+            probe = destination.parent if destination.is_symlink() else destination
+            context = _git_context_for(probe)
+            if context is not None and context.branch == context.target_branch:
+                ignored_target = destination.resolve() if write.follow_symlinks else destination
+                if _is_ignored_untracked_path(ignored_target, root=context.root):
+                    continue
+                return True
     return False
 
 
@@ -158,9 +163,9 @@ def _changed_since(recorded: object, snapshot: _Snapshot) -> bool:
 def _reached_checkouts(command: str, *, cwd: Path) -> dict[Path, Path]:
     """Map the git dir of each checkout the command can reach to a directory inside it."""
     checkouts: dict[Path, Path] = {}
-    directories = [cwd, *(directory for directory, _ in _commands_with_cwd(command, cwd=cwd))]
+    directories = [cwd, *(directory for directory, _ in commands_with_cwd(command, cwd=cwd))]
     for directory in directories:
-        probe = _existing_probe_path(directory, cwd=cwd)
+        probe = _existing_probe_path(directory)
         git_dir = _git_output(probe, "rev-parse", "--absolute-git-dir")
         if git_dir is not None:
             checkouts.setdefault(Path(git_dir), probe)
@@ -176,7 +181,7 @@ def _record_path(git_dir: Path, call_id: str | None) -> Path:
 
 
 def _target_snapshot(directory: Path) -> _Snapshot | None:
-    context = _git_context_for(directory, cwd=directory)
+    context = _git_context_for(directory)
     if context is None or context.branch != context.target_branch:
         return None
     root = context.root
@@ -193,21 +198,30 @@ def _target_snapshot(directory: Path) -> _Snapshot | None:
     }
 
 
-def _signatures(root: Path, names: str) -> dict[str, list[int] | None]:
-    changes: dict[str, list[int] | None] = {}
+def _signatures(root: Path, names: str) -> dict[str, str]:
+    changes: dict[str, str] = {}
     for name in filter(None, names.split("\0")):
-        try:
-            status = (root / name).lstat()
-        except FileNotFoundError:
-            changes[name] = None
-        else:
-            changes[name] = [status.st_mtime_ns, status.st_size]
+        diff = _git_output(
+            root,
+            "diff",
+            "HEAD",
+            "--binary",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-renames",
+            "--",
+            name,
+            strip=False,
+        )
+        if diff is None:
+            raise OSError(f"cannot fingerprint tracked changes: {root / name}")
+        changes[name] = hashlib.sha256(diff.encode()).hexdigest()
     return changes
 
 
 def parse_worktree_action(command: str) -> WorktreeAction | None:
     """Return the direct managed-worktree action invoked by a shell command."""
-    for shell_command in _parse_shell_commands(command):
+    for shell_command in parse_shell_commands(command):
         git_arguments = _git_arguments(shell_command)
         if git_arguments is None:
             continue
@@ -219,7 +233,7 @@ def parse_worktree_action(command: str) -> WorktreeAction | None:
 
 def blocks_target_merge(command: str, *, cwd: Path) -> bool:
     """Reject starting a direct merge on the configured target branch."""
-    for directory, shell_command in _commands_with_cwd(command, cwd=cwd):
+    for directory, shell_command in commands_with_cwd(command, cwd=cwd):
         arguments = _git_arguments(shell_command)
         if arguments is None:
             continue
@@ -229,31 +243,47 @@ def blocks_target_merge(command: str, *, cwd: Path) -> bool:
         # NOTE: docs/ARCHITECTURE.md's Agent guards permit recovery on the target branch.
         if arguments[index + 1 :] in (["--continue"], ["--abort"], ["--quit"], ["--help"], ["-h"]):
             continue
-        context = _git_context_for(directory, cwd=directory, git_options=tuple(arguments[:index]))
+        context = _git_context_for(directory, git_options=tuple(arguments[:index]))
         if context is not None and context.branch == context.target_branch:
             return True
     return False
 
 
-def shell_write_targets(command: str, *, cwd: Path) -> tuple[Path, ...]:
+def shell_write_targets(command: str, *, cwd: Path) -> tuple[WriteTarget, ...]:
     """Return files that common shell redirections and file utilities would write."""
     # NOTE: docs/ARCHITECTURE.md's Agent guards list the recognized shell writes.
-    targets: list[Path] = []
-    for directory, shell_command in _commands_with_cwd(command, cwd=cwd):
-        targets.extend(directory / Path(word).expanduser() for word in _redirect_targets(shell_command))
-        targets.extend(directory / Path(word).expanduser() for word in _utility_targets(shell_command))
+    targets: list[WriteTarget] = []
+    for directory, shell_command in commands_with_cwd(command, cwd=cwd):
+        targets.extend(
+            WriteTarget(directory / Path(word).expanduser()) for word in _redirect_targets(shell_command)
+        )
+        index = _executable_index(shell_command)
+        executable = Path(shell_command[index]).name if index is not None else ""
+        operands = _utility_targets(shell_command)
+        for index, word in enumerate(operands):
+            path = directory / Path(word).expanduser()
+            follows = _utility_follows_symlinks(
+                executable, shell_command, path, destination=index == len(operands) - 1
+            )
+            targets.append(WriteTarget(path, follow_symlinks=follows))
     # NOTE: docs/ARCHITECTURE.md defers variable paths to the post-command check;
     # shlex removes quoting, so even quoted dollar signs cannot be resolved here.
-    return tuple(target for target in targets if "$" not in str(target))
+    return tuple(target for target in targets if "$" not in str(target.path))
 
 
-def _commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[str]]]:
-    """Yield each non-cd shell command with the directory literal cd commands left it in."""
-    for shell_command in _parse_shell_commands(command):
-        if shell_command[0] == "cd" and len(shell_command) in {2, 3}:
-            cwd = cwd / Path(shell_command[-1]).expanduser()
-            continue
-        yield cwd, shell_command
+def _utility_follows_symlinks(executable: str, command: list[str], path: Path, *, destination: bool) -> bool:
+    if executable == "sed":
+        return "--follow-symlinks" in command
+    if executable in {"mv", "ln", "install"}:
+        options = list(itertools.takewhile(lambda word: word != "--", command))
+        short_flags = "".join(
+            word[1:] for word in options if word.startswith("-") and not word.startswith("--")
+        )
+        entry_only = "T" in short_flags or "--no-target-directory" in options
+        if executable == "ln":
+            entry_only |= "n" in short_flags or "--no-dereference" in options
+        return destination and path.is_dir() and not entry_only
+    return executable not in {"rm", "perl"}
 
 
 def _redirect_targets(command: list[str]) -> list[str]:
@@ -323,54 +353,6 @@ def _operands(arguments: list[str], *, options_with_values: set[str]) -> list[st
     return operands
 
 
-def _parse_shell_commands(command: str) -> list[list[str]]:
-    tokens: list[str] = []
-    heredocs: list[tuple[str, bool]] = []
-    header = ""
-    for line in command.splitlines(keepends=True):
-        if heredocs:
-            delimiter, strip_tabs = heredocs[0]
-            candidate = line.lstrip("\t") if strip_tabs else line
-            if candidate.removesuffix("\n") == delimiter:
-                heredocs.pop(0)
-            continue
-        header += line
-        if header.endswith("\\\n"):
-            continue
-        try:
-            lexer = shlex.shlex(header, posix=True, punctuation_chars=";&|()<>\n")
-            lexer.whitespace = " \t\r"
-            lexer.whitespace_split = True
-            words = list(lexer)
-        except ValueError:
-            # A quoted shell argument may span physical lines.
-            continue
-        tokens.extend(words)
-        # NOTE: docs/ARCHITECTURE.md excludes heredoc data from shell command checks.
-        raw_words = _HEREDOC_TOKENS.findall(header)
-        heredocs.extend(
-            (shlex.split(target, comments=False)[0], operator == "<<-")
-            for operator, target in itertools.pairwise(raw_words)
-            if operator in {"<<", "<<-"}
-        )
-        header = ""
-    return [] if header else _shell_commands(tokens)
-
-
-def _shell_commands(tokens: list[str]) -> list[list[str]]:
-    commands: list[list[str]] = []
-    start = 0
-    for index, token in enumerate(tokens):
-        if not token or token.strip("\n") not in _SHELL_SEPARATORS:
-            continue
-        if start < index:
-            commands.append(tokens[start:index])
-        start = index + 1
-    if start < len(tokens):
-        commands.append(tokens[start:])
-    return commands
-
-
 def _git_arguments(command: list[str]) -> list[str] | None:
     index = _executable_index(command)
     if index is None or Path(command[index]).name != "git":
@@ -437,8 +419,8 @@ def _worktree_subcommand(tokens: list[str], index: int) -> WorktreeAction | None
     return None
 
 
-def _git_context_for(path: Path, *, cwd: Path, git_options: tuple[str, ...] = ()) -> GitContext | None:
-    probe = _existing_probe_path(path, cwd=cwd)
+def _git_context_for(path: Path, *, git_options: tuple[str, ...] = ()) -> GitContext | None:
+    probe = _existing_probe_path(path)
     root = _git_output(probe, *git_options, "rev-parse", "--show-toplevel")
     if root is None:
         return None
@@ -459,22 +441,17 @@ def _git_context_for(path: Path, *, cwd: Path, git_options: tuple[str, ...] = ()
     )
 
 
-def _is_ignored_untracked_path(path: Path, *, cwd: Path, root: Path) -> bool:
+def _is_ignored_untracked_path(path: Path, *, root: Path) -> bool:
     # NOTE: docs/ARCHITECTURE.md permits ignored, untracked paths on the target branch.
-    target = path.expanduser()
-    if not target.is_absolute():
-        target = cwd / target
     try:
-        relative = target.resolve().relative_to(root)
+        relative = path.relative_to(root)
     except ValueError:
         return False
     return _git_output(root, "check-ignore", "--quiet", "--", str(relative)) is not None
 
 
-def _existing_probe_path(path: Path, *, cwd: Path) -> Path:
-    probe = path.expanduser()
-    if not probe.is_absolute():
-        probe = cwd / probe
+def _existing_probe_path(path: Path) -> Path:
+    probe = path.expanduser().absolute()
     if probe.exists():
         return probe if probe.is_dir() else probe.parent
     parent = probe.parent
@@ -483,7 +460,7 @@ def _existing_probe_path(path: Path, *, cwd: Path) -> Path:
     return parent
 
 
-def _git_output(path: Path, *args: str) -> str | None:
+def _git_output(path: Path, *args: str, strip: bool = True) -> str | None:
     result = subprocess.run(
         ("git", "-C", str(path), *args),
         stdout=subprocess.PIPE,
@@ -494,4 +471,4 @@ def _git_output(path: Path, *args: str) -> str | None:
     )
     if result.returncode != 0:
         return None
-    return result.stdout.strip()
+    return result.stdout.strip() if strip else result.stdout

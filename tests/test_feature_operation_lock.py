@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
+import subprocess
 from threading import Event, Thread
 from typing import TYPE_CHECKING
 
@@ -8,7 +8,7 @@ import pytest
 
 from new_feature import cli
 from new_feature.errors import NewFeatureError
-from new_feature.manifest import FeatureRecord, Manifest
+from tests.conftest import init_git_repo
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -17,30 +17,18 @@ if TYPE_CHECKING:
 def test_concurrent_same_feature_merge_and_teardown_fail_fast(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    record = FeatureRecord(
-        name="demo",
-        slug="demo",
-        branch="demo",
-        worktree=".worktrees/demo",
-        target_branch="main",
-        status="active",
-        created_at="2026-08-19T00:00:00Z",
-    )
-    manifest = Manifest(features={"demo": record})
+    init_git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["demo", "--no-agent"]) == 0
+    worktree = tmp_path / ".worktrees/demo"
+    (worktree / "feature.txt").write_text("feature work\n")
+    subprocess.run(["git", "add", "feature.txt"], cwd=worktree, check=True)
+    subprocess.run(["git", "commit", "-m", "Feature work"], cwd=worktree, check=True)
     first_check_started = Event()
     release_first_check = Event()
     check_calls = 0
     results: list[int] = []
     errors: list[NewFeatureError] = []
-
-    monkeypatch.setattr(cli, "is_branch_merged", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(cli, "checkout_target", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(cli, "load_project_config", lambda _root: cli.ProjectConfig())
-    monkeypatch.setattr(cli, "manifest_lock", lambda _root: nullcontext())
-    monkeypatch.setattr(cli, "load_manifest", lambda _root: manifest)
-    monkeypatch.setattr(cli, "worktree_is_clean", lambda _worktree: True)
-    monkeypatch.setattr(cli, "ensure_merge_is_clean", lambda _root, *, branch, target_branch: None)
-    monkeypatch.setattr(cli, "_merge_target", lambda _root, _config, current, **_kwargs: current)
 
     def run_commands(_commands, *, cwd, env, failure_log=None):
         del cwd, env, failure_log
@@ -74,3 +62,4 @@ def test_concurrent_same_feature_merge_and_teardown_fail_fast(
     assert not first.is_alive()
     assert not errors
     assert results == [0]
+    assert (tmp_path / "feature.txt").read_text() == "feature work\n"
