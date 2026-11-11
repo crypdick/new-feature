@@ -140,10 +140,19 @@ def test_unbalanced_subshell_fails_explicitly(checkouts, command):
         list(commands_with_cwd(command, cwd=target))
 
 
+@pytest.mark.parametrize("command", ["diff <(printf test) README.md", "printf test > >(cat)"])
+def test_process_substitution_is_rejected_with_actionable_diagnostic(checkouts, command):
+    target, _ = checkouts
+    with pytest.raises(NewFeatureError, match="process substitution; use simple commands"):
+        should_block("target-branch", {"kind": "shell", "cwd": str(target), "command": command})
+
+
 def test_quoted_shell_operators_are_arguments(checkouts):
     target, _ = checkouts
-    command = "echo '(' ')' '&&' ';' '||'"
-    assert list(commands_with_cwd(command, cwd=target)) == [(target, ["echo", "(", ")", "&&", ";", "||"])]
+    command = "echo '(' ')' '&&' ';' '||' '<(' '>('"
+    assert list(commands_with_cwd(command, cwd=target)) == [
+        (target, ["echo", "(", ")", "&&", ";", "||", "<(", ">("])
+    ]
 
 
 def test_snapshot_diff_failure_is_not_permission(checkouts, monkeypatch):

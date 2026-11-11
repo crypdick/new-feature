@@ -69,6 +69,11 @@ def parse_shell_commands(command: str) -> list[list[str]]:
         for raw in raw_words:
             if raw.startswith("#"):
                 continue
+            # NOTE: docs/ARCHITECTURE.md documents unsupported shell scopes.
+            if raw.startswith(("<(", ">(")):
+                raise NewFeatureError(
+                    "cannot infer shell cwd through process substitution; use simple commands and explicit files"
+                )
             if re.fullmatch(r"[;&|()\n]+", raw):
                 tokens.extend((part, True) for part in re.findall(r"&&|\|\||[;&|()\n]", raw))
             else:

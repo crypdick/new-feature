@@ -146,8 +146,9 @@ and current-shell `command`/`builtin` prefixes are recognized; external `env` an
 `sudo` invocations do not move the parent shell. Directory inference considers both
 outcomes of a command; a failed `cd` never moves the inferred directory.
 `CDPATH`/`PWD` overrides, relative `cd` with inherited `CDPATH`, dynamic `cd`, shell
-control flow, and `cd` combined with pipelines or background commands fail explicitly
-instead of guessing a checkout. Use separate simple commands in these cases.
+control flow, process substitution (`<(` and `>(`), and `cd` combined with pipelines
+or background commands fail explicitly instead of guessing a checkout. Use separate
+simple commands and explicit input or output files in these cases.
 Guards don't parse arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
 Paths containing dollar signs are deferred to the post-command check rather than
 treated as literal paths in the current checkout. This lets commands copy changes
