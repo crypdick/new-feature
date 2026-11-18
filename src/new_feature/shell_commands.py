@@ -33,7 +33,8 @@ _CONTROL_WORDS = {
     "{",
     "}",
 }
-_SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", ""}
+type _ShellPart = list[str] | str  # Command words or an unquoted shell operator.
+
 # Preserve quoting here so a literal '<<' cannot start a heredoc. shlex removes it.
 _HEREDOC_TOKENS = re.compile(
     r"\#[^\n]*|"
@@ -43,6 +44,10 @@ _HEREDOC_TOKENS = re.compile(
 
 
 def parse_shell_commands(command: str) -> list[list[str]]:
+    return [part if isinstance(part, list) else [part] for part in _parse_shell_parts(command)]
+
+
+def _parse_shell_parts(command: str) -> list[_ShellPart]:
     tokens: list[tuple[str, bool]] = []
     heredocs: list[tuple[str, bool]] = []
     header = ""
@@ -87,17 +92,19 @@ def parse_shell_commands(command: str) -> list[list[str]]:
     return [] if header else _shell_commands(tokens)
 
 
-def _shell_commands(tokens: list[tuple[str, bool]]) -> list[list[str]]:
-    commands: list[list[str]] = []
+def _shell_commands(tokens: list[tuple[str, bool]]) -> list[_ShellPart]:
+    commands: list[_ShellPart] = []
     words: list[str] = []
-    for token, separator in tokens:
+    for word, separator in tokens:
         if separator:
             if words:
                 commands.append(words)
                 words = []
-            commands.append([token.removesuffix("\n")])
+            if word == "\n" and commands and commands[-1] == "|":
+                continue
+            commands.append(word.removesuffix("\n"))
         else:
-            words.append(token)
+            words.append(word)
     if words:
         commands.append(words)
     return commands
@@ -118,44 +125,52 @@ class _DirectoryState:
             return self.failure
         return self.success | self.failure
 
-    def update(self, success: set[Path], failure: set[Path]) -> None:
+    def update(self, success: set[Path], failure: set[Path], *, before_pipe: bool) -> None:
+        # All stages start in the same directories. Only the whole pipeline has
+        # a status for the surrounding AND/OR list.
+        if before_pipe:
+            return
         if self.operator == "&&":
-            failure |= self.failure
+            failure = failure | self.failure
         elif self.operator == "||":
-            success |= self.success
+            success = success | self.success
         self.success, self.failure = success, failure
 
 
 def commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[str]]]:
     """Track literal cd and subshell scopes; refuse directory inference beyond this grammar."""
-    commands = [_current_shell_words(words) for words in parse_shell_commands(command)]
-    _require_supported_cwd_commands(commands)
+    parts = [
+        _current_shell_words(part) if isinstance(part, list) else part for part in _parse_shell_parts(command)
+    ]
+    _require_supported_cwd_commands(parts)
     state = _DirectoryState({cwd}, {cwd})
     scopes: list[_DirectoryState] = []
-    for words in commands:
-        operator = words[0]
-        if words == ["("]:
+    for part, following in itertools.pairwise([*parts, ""]):
+        before_pipe = following == "|"
+        if part == "(":
             scopes.append(state)
             incoming = state.incoming()
             state = _DirectoryState(set(incoming), set(incoming))
-        elif words == [")"]:
+        elif part == ")":
             if not scopes:
                 raise NewFeatureError("cannot infer shell cwd: unmatched closing subshell")
             state = scopes.pop()
             incoming = state.incoming()
-            state.update(set(incoming), set(incoming))
-        elif len(words) == 1 and operator in _SHELL_SEPARATORS:
-            state.operator = operator
+            state.update(incoming, incoming, before_pipe=before_pipe)
+        elif part == "|":
+            continue
+        elif isinstance(part, str):
+            state.operator = part
         else:
             incoming = state.incoming()
-            if operator == "cd":
-                success = _cd_directories(words, incoming)
-                state.update(success, set(incoming))
+            if part[0] == "cd":
+                success = _cd_directories(part, incoming)
             else:
                 for directory in sorted(incoming):
-                    yield directory, words
-                state.update(set(incoming), set(incoming))
-            state.operator = ";"
+                    yield directory, part
+                success = incoming
+            state.update(success, incoming, before_pipe=before_pipe)
+            state.operator = state.operator if before_pipe else ";"
     if scopes:
         raise NewFeatureError("cannot infer shell cwd: unclosed subshell")
 
@@ -176,11 +191,26 @@ def _current_shell_words(words: list[str]) -> list[str]:
     return words[index:]
 
 
-def _require_supported_cwd_commands(commands: list[list[str]]) -> None:
-    if any(words[0] == "cd" for words in commands) and any(words in (["|"], ["&"]) for words in commands):
-        raise NewFeatureError("cannot infer shell cwd for cd in a pipeline or background command")
-    if any(words[0] in _CONTROL_WORDS for words in commands):
+def _require_supported_cwd_commands(parts: list[_ShellPart]) -> None:
+    names = {part[0] for part in parts if isinstance(part, list)}
+    if "cd" in names and "&" in parts:
+        raise NewFeatureError("cannot infer shell cwd for cd with background commands")
+    if "cd" in names and "|" in parts:
+        _require_supported_pipeline(parts)
+    if names & _CONTROL_WORDS:
         raise NewFeatureError("cannot infer shell cwd through shell control flow; use simple commands")
+
+
+def _require_supported_pipeline(parts: list[_ShellPart]) -> None:
+    for index, part in enumerate(parts):
+        if not isinstance(part, list) or part[0] != "cd":
+            continue
+        if parts[index - 1 : index] == ["|"] or parts[index + 1 : index + 2] == ["|"]:
+            raise NewFeatureError("cannot infer shell cwd for cd as a pipeline stage")
+    # The lexer can retain escaped line breaks in words, changing command names
+    # or arguments. Don't infer a checkout from those words.
+    if any("\n" in word for part in parts if isinstance(part, list) for word in part):
+        raise NewFeatureError("cannot infer shell cwd for cd with a pipeline and multiline words")
 
 
 def _cd_directories(words: list[str], directories: set[Path]) -> set[Path]:

@@ -482,5 +482,8 @@ new-feature install-rules --global  # ~/.i-insist/new-feature.toml
 The installer also sets up i-insist. Restart your coding agent and review `/hooks`
 after installation. Reinstalling replaces generated rule files, so leave them unmodified.
 
+Run directory changes before a pipeline, as in `cd /path && git status | head`.
+The guards don't support `cd` itself as a pipeline stage or combined with background commands.
+
 If a guard blocks an action, follow its error message. To approve an override,
 include `I insist` in a human message.

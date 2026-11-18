@@ -144,11 +144,14 @@ Guards recognize Git directory options, literal `cd` commands, subshell scopes a
 AND/OR lists, preserving shell's logical symlink-parent semantics. Leading assignments
 and current-shell `command`/`builtin` prefixes are recognized; external `env` and
 `sudo` invocations do not move the parent shell. Directory inference considers both
-outcomes of a command; a failed `cd` never moves the inferred directory.
+outcomes of a command; a failed `cd` never moves the inferred directory. A pipeline
+such as `cd /path && git status | head` checks each stage in the directory reached
+by the preceding commands.
 `CDPATH`/`PWD` overrides, relative `cd` with inherited `CDPATH`, dynamic `cd`, shell
-control flow, process substitution (`<(` and `>(`), and `cd` combined with pipelines
-or background commands fail explicitly instead of guessing a checkout. Use separate
-simple commands and explicit input or output files in these cases.
+control flow, and process substitution (`<(` and `>(`) fail explicitly. So do `cd`
+as a pipeline stage, `cd` combined with background commands, and `cd` with a pipeline
+and multiline words (including escaped line breaks). Use separate simple commands
+and explicit input or output files in these cases.
 Guards don't parse arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
 Paths containing dollar signs are deferred to the post-command check rather than
 treated as literal paths in the current checkout. This lets commands copy changes
