@@ -80,6 +80,34 @@ def test_short_circuit_lists_preserve_possible_directories(checkouts):
     assert should_block("target-merge", {**event, "command": f"true || cd {feature} && git merge feature"})
 
 
+def test_merge_pipeline_after_cd_uses_only_successful_directory(checkouts):
+    target, feature = checkouts
+    event = {"kind": "shell", "cwd": str(target)}
+    command = f"cd {feature} && git status -sb | head -1 && git merge main 2>&1 | tail -3"
+    assert not should_block("target-merge", {**event, "command": command})
+    assert not should_block("target-branch", {**event, "command": command})
+
+
+@pytest.mark.parametrize(
+    ("rule", "pipeline"),
+    [
+        ("target-branch", "cat README.md |\ntee README.md"),
+        ("target-merge", "git merge feature | cat"),
+        ("target-merge", "(git status) | git merge feature"),
+    ],
+)
+def test_pipeline_after_cd_still_checks_target_checkout(checkouts, rule, pipeline):
+    target, feature = checkouts
+    command = f"cd {target} && {pipeline}"
+    assert should_block(rule, {"kind": "shell", "cwd": str(feature), "command": command})
+
+
+def test_quoted_pipe_command_is_not_a_pipeline_separator(checkouts):
+    target, feature = checkouts
+    command = f"cd {target} && '|' || git merge feature"
+    assert should_block("target-merge", {"kind": "shell", "cwd": str(feature), "command": command})
+
+
 @pytest.mark.parametrize(
     "command",
     [
@@ -87,7 +115,10 @@ def test_short_circuit_lists_preserve_possible_directories(checkouts):
         "cd; git status",
         "cd $W && git status",
         "cd feature | cat",
+        "cat |\ncommand cd feature",
+        "cd feature && \\\ngit status | cat",
         "cd feature & git status",
+        "cd feature && git status & git status",
         "if true; then git status; fi",
     ],
 )
