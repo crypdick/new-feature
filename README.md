@@ -38,8 +38,10 @@ new-feature teardown my-feature
 Run lifecycle commands from the original checkout or a managed feature worktree.
 Commands use the owning checkout's configuration and manifest. Ordinary linked worktrees
 keep their own lifecycle state unless a manifest explicitly manages them. Use feature
-worktrees for edits and commits. If you're already in a coding agent session, use the
-printed absolute worktree path for the agent's tools.
+worktrees for edits and commits. If you're already in a coding agent session, set
+each tool call's working directory to the printed absolute path. Creation cannot
+change the running session's directory. Use `new-feature exec NAME -- COMMAND ...`
+for commands that need the feature's saved environment.
 
 To launch an agent in the worktree, use `new-feature my-feature --agent claude`.
 Without `--agent`, creation uses `default_agent` if configured. Creation infers
@@ -201,6 +203,9 @@ directory, for example `new-feature exec my-feature -- uv run pytest`. Names nor
 to exact slugs; partial matches are rejected. Standard input, output, and errors are
 inherited, and the child's exit code is returned (128 + signal for signal termination).
 Arguments run without a shell; use `sh -c` explicitly for shell expansion or pipelines.
+`exec` doesn't activate a virtualenv or replace an interpreter named in the command.
+For Python tests, use the worktree's environment or environment manager. An editable
+install in the target checkout's virtualenv can still load target code from a feature cwd.
 
 Multiple `exec` commands can run in one feature, such as a server and its tests.
 Creation, merge, teardown, and repair of that feature are refused while an `exec`

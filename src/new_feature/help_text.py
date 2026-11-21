@@ -32,7 +32,8 @@ Examples:
   new-feature create my-feature --dry-run
 
 Codex and Claude Code child sessions infer --no-agent unless --agent is explicit.
-Use --no-agent in other agent runners. Work in the printed path.
+Use --no-agent in other agent runners. Set tool workdir to the printed path.
+Use new-feature exec NAME -- COMMAND to run with the feature's saved environment.
 Run from the original checkout or a managed feature worktree.
 """
 

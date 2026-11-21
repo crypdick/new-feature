@@ -42,7 +42,10 @@ def test_neutral_file_checker_uses_event_cwd_and_all_paths(tmp_path, monkeypatch
     event = {"kind": "file_edit", "cwd": str(tmp_path), "paths": ["README.md"], "command": None}
     status, output = check(monkeypatch, event, "target-branch")
     assert status == 0
-    assert "Direct edits on the repository's target branch" in json.loads(output)
+    message = json.loads(output)
+    assert "Direct edits on the repository's target branch" in message
+    assert "If you already have a managed worktree" in message
+    assert "new-feature create <feature-name> --no-agent" in message
     assert check(monkeypatch, event, "worktree-add") == (0, "null\n")
     event["kind"] = "other"
     assert check(monkeypatch, event, "target-branch") == (0, "null\n")

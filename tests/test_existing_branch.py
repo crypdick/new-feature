@@ -9,7 +9,7 @@ from new_feature.manifest import load_manifest
 from tests.conftest import init_git_repo
 
 
-def test_existing_branch_stays_inert_until_explicit_bootstrap(tmp_path, monkeypatch):
+def test_existing_branch_stays_inert_until_explicit_bootstrap(tmp_path, monkeypatch, capsys):
     init_git_repo(tmp_path)
     subprocess.run(["git", "branch", "review"], cwd=tmp_path, check=True)
     (tmp_path / ".new-feature.toml").write_text(
@@ -18,6 +18,10 @@ def test_existing_branch_stays_inert_until_explicit_bootstrap(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
     assert main(["create", "review", "--from", "review"]) == 0
     worktree = tmp_path / ".worktrees" / "review"
+    output = capsys.readouterr().out
+    assert f"Worktree imported (inert): {worktree}" in output
+    assert "new-feature create review --bootstrap --no-agent" in output
+    assert "new-feature exec" not in output
     assert not (worktree / "bootstrapped").exists()
     record = load_manifest(tmp_path).features["review"]
     assert record.status == "inert"
