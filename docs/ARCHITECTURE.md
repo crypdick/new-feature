@@ -148,10 +148,13 @@ outcomes of a command; a failed `cd` never moves the inferred directory. A pipel
 such as `cd /path && git status | head` checks each stage in the directory reached
 by the preceding commands.
 `CDPATH`/`PWD` overrides, relative `cd` with inherited `CDPATH`, dynamic `cd`, shell
-control flow, and process substitution (`<(` and `>(`) fail explicitly. So do `cd`
-as a pipeline stage, `cd` combined with background commands, and `cd` with a pipeline
-and multiline words (including escaped line breaks). Use separate simple commands
-and explicit input or output files in these cases.
+control flow, and process substitution (`<(` and `>(`) are outside directory inference.
+So are `cd` as a pipeline stage, `cd` combined with background commands, and `cd`
+with a pipeline and multiline words (including escaped line breaks). In these cases
+the pre-command write and merge checks do not guess at targets. The post-command
+tracked-change check still covers the starting checkout, not any other checkout the
+command may have reached. Worktree checks do not infer directories; they skip commands
+whose syntax they cannot tokenize, such as process substitution.
 Guards don't parse arbitrary scripts, interpreters such as `python -c`, Git aliases, or variable expansion.
 Paths containing dollar signs are deferred to the post-command check rather than
 treated as literal paths in the current checkout. This lets commands copy changes

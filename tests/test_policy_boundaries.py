@@ -5,7 +5,6 @@ import subprocess
 
 import pytest
 
-from new_feature.errors import NewFeatureError
 from new_feature.rule_checker import should_block
 from new_feature.shell_commands import commands_with_cwd
 from tests.conftest import init_git_repo
@@ -122,10 +121,9 @@ def test_quoted_pipe_command_is_not_a_pipeline_separator(checkouts):
         "if true; then git status; fi",
     ],
 )
-def test_unknown_directory_transitions_fail_explicitly(checkouts, command):
+def test_unknown_directory_transitions_do_not_block(checkouts, command):
     target, _ = checkouts
-    with pytest.raises(NewFeatureError, match="cannot infer shell cwd"):
-        should_block("target-branch", {"kind": "shell", "cwd": str(target), "command": command})
+    assert not should_block("target-branch", {"kind": "shell", "cwd": str(target), "command": command})
 
 
 def test_directory_scopes_match_supported_shell_behavior(checkouts):
@@ -165,17 +163,15 @@ def test_post_check_ignores_metadata_only_change(checkouts):
 
 
 @pytest.mark.parametrize("command", [") git status", "(git status"])
-def test_unbalanced_subshell_fails_explicitly(checkouts, command):
+def test_unbalanced_subshell_produces_no_candidates(checkouts, command):
     target, _ = checkouts
-    with pytest.raises(NewFeatureError, match="cannot infer shell cwd"):
-        list(commands_with_cwd(command, cwd=target))
+    assert commands_with_cwd(command, cwd=target) == []
 
 
 @pytest.mark.parametrize("command", ["diff <(printf test) README.md", "printf test > >(cat)"])
-def test_process_substitution_is_rejected_with_actionable_diagnostic(checkouts, command):
+def test_process_substitution_produces_no_candidates(checkouts, command):
     target, _ = checkouts
-    with pytest.raises(NewFeatureError, match="process substitution; use simple commands"):
-        should_block("target-branch", {"kind": "shell", "cwd": str(target), "command": command})
+    assert commands_with_cwd(command, cwd=target) == []
 
 
 def test_quoted_shell_operators_are_arguments(checkouts):
@@ -272,15 +268,13 @@ def test_external_or_query_prefix_does_not_change_shell_directory(checkouts, pre
 @pytest.mark.parametrize("prefix", ["CDPATH=/elsewhere", "PWD=/elsewhere"])
 def test_directory_environment_override_fails_explicitly(checkouts, prefix):
     target, _ = checkouts
-    with pytest.raises(NewFeatureError, match="cannot infer shell cwd"):
-        list(commands_with_cwd(f"{prefix} cd nested && git status", cwd=target))
+    assert commands_with_cwd(f"{prefix} cd nested && git status", cwd=target) == []
 
 
 def test_inherited_cdpath_is_not_guessed(checkouts, monkeypatch):
     target, _ = checkouts
     monkeypatch.setenv("CDPATH", "/elsewhere")
-    with pytest.raises(NewFeatureError, match="cannot infer shell cwd"):
-        list(commands_with_cwd("cd nested && git status", cwd=target))
+    assert commands_with_cwd("cd nested && git status", cwd=target) == []
     assert list(commands_with_cwd(f"cd {target} && git status", cwd=target)) == [(target, ["git", "status"])]
     assert list(commands_with_cwd("cd ./ && git status", cwd=target)) == [(target, ["git", "status"])]
 

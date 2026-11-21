@@ -163,6 +163,7 @@ def _changed_since(recorded: object, snapshot: _Snapshot) -> bool:
 def _reached_checkouts(command: str, *, cwd: Path) -> dict[Path, Path]:
     """Map the git dir of each checkout the command can reach to a directory inside it."""
     checkouts: dict[Path, Path] = {}
+    # Always check the starting checkout, even when shell syntax is opaque.
     directories = [cwd, *(directory for directory, _ in commands_with_cwd(command, cwd=cwd))]
     for directory in directories:
         probe = _existing_probe_path(directory)
