@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 
 import pytest
 
@@ -45,6 +46,30 @@ def test_neutral_file_checker_uses_event_cwd_and_all_paths(tmp_path, monkeypatch
     assert check(monkeypatch, event, "worktree-add") == (0, "null\n")
     event["kind"] = "other"
     assert check(monkeypatch, event, "target-branch") == (0, "null\n")
+
+
+@pytest.mark.parametrize(
+    ("command", "changes_tracked_file"),
+    [
+        ("if test -f README.md; then cat README.md; fi", False),
+        ("if test -f README.md; then printf changed > README.md; fi", True),
+        ("cat <(printf test)", False),
+        ('cd "$PWD" && printf changed > README.md', True),
+    ],
+)
+def test_unsupported_shell_syntax_defers_to_tracked_change_check(
+    tmp_path, monkeypatch, command, changes_tracked_file
+):
+    init_git_repo(tmp_path)
+    (tmp_path / "README.md").write_text("already dirty\n")
+    event = {"kind": "shell", "cwd": str(tmp_path), "command": command, "tool_use_id": "opaque"}
+
+    for rule in ("worktree-add", "worktree-remove", "target-branch", "target-merge"):
+        assert check(monkeypatch, event, rule) == (0, "null\n")
+    subprocess.run(["bash", "-c", command], cwd=tmp_path, check=True, capture_output=True)
+    status, output = check(monkeypatch, event, "target-shell-changes")
+    assert status == 0
+    assert (json.loads(output) is not None) is changes_tracked_file
 
 
 @pytest.mark.parametrize("name", ["target-branch", "target-merge"])

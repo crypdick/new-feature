@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from new_feature.errors import NewFeatureError
-
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -43,8 +41,16 @@ _HEREDOC_TOKENS = re.compile(
 )
 
 
+class _UnsupportedShellSyntaxError(Exception):
+    """Mark shell syntax outside the advisory parser, not a checker failure."""
+
+
 def parse_shell_commands(command: str) -> list[list[str]]:
-    return [part if isinstance(part, list) else [part] for part in _parse_shell_parts(command)]
+    try:
+        parts = _parse_shell_parts(command)
+    except _UnsupportedShellSyntaxError:
+        return []
+    return [part if isinstance(part, list) else [part] for part in parts]
 
 
 def _parse_shell_parts(command: str) -> list[_ShellPart]:
@@ -74,11 +80,9 @@ def _parse_shell_parts(command: str) -> list[_ShellPart]:
         for raw in raw_words:
             if raw.startswith("#"):
                 continue
-            # NOTE: docs/ARCHITECTURE.md documents unsupported shell scopes.
+            # Process substitution contains nested commands, not a literal redirect.
             if raw.startswith(("<(", ">(")):
-                raise NewFeatureError(
-                    "cannot infer shell cwd through process substitution; use simple commands and explicit files"
-                )
+                raise _UnsupportedShellSyntaxError("process substitution")
             if re.fullmatch(r"[;&|()\n]+", raw):
                 tokens.extend((part, True) for part in re.findall(r"&&|\|\||[;&|()\n]", raw))
             else:
@@ -137,8 +141,16 @@ class _DirectoryState:
         self.success, self.failure = success, failure
 
 
-def commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[str]]]:
-    """Track literal cd and subshell scopes; refuse directory inference beyond this grammar."""
+def commands_with_cwd(command: str, *, cwd: Path) -> list[tuple[Path, list[str]]]:
+    """Return commands with inferred directories, or no candidates for unsupported syntax."""
+    try:
+        # Validate the entire command before exposing any inferred directories.
+        return list(_commands_with_cwd(command, cwd=cwd))
+    except _UnsupportedShellSyntaxError:
+        return []
+
+
+def _commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[str]]]:
     parts = [
         _current_shell_words(part) if isinstance(part, list) else part for part in _parse_shell_parts(command)
     ]
@@ -153,7 +165,7 @@ def commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[s
             state = _DirectoryState(set(incoming), set(incoming))
         elif part == ")":
             if not scopes:
-                raise NewFeatureError("cannot infer shell cwd: unmatched closing subshell")
+                raise _UnsupportedShellSyntaxError("unmatched closing subshell")
             state = scopes.pop()
             incoming = state.incoming()
             state.update(incoming, incoming, before_pipe=before_pipe)
@@ -172,7 +184,7 @@ def commands_with_cwd(command: str, *, cwd: Path) -> Iterator[tuple[Path, list[s
             state.update(success, incoming, before_pipe=before_pipe)
             state.operator = state.operator if before_pipe else ";"
     if scopes:
-        raise NewFeatureError("cannot infer shell cwd: unclosed subshell")
+        raise _UnsupportedShellSyntaxError("unclosed subshell")
 
 
 def _current_shell_words(words: list[str]) -> list[str]:
@@ -187,18 +199,18 @@ def _current_shell_words(words: list[str]) -> list[str]:
     if words[index : index + 1] != ["cd"]:
         return words
     if any(word.startswith(("CDPATH=", "PWD=")) for word in words[:index]):
-        raise NewFeatureError("cannot infer shell cwd for cd with CDPATH or PWD overrides")
+        raise _UnsupportedShellSyntaxError("cd with CDPATH or PWD overrides")
     return words[index:]
 
 
 def _require_supported_cwd_commands(parts: list[_ShellPart]) -> None:
     names = {part[0] for part in parts if isinstance(part, list)}
     if "cd" in names and "&" in parts:
-        raise NewFeatureError("cannot infer shell cwd for cd with background commands")
+        raise _UnsupportedShellSyntaxError("cd with background commands")
     if "cd" in names and "|" in parts:
         _require_supported_pipeline(parts)
     if names & _CONTROL_WORDS:
-        raise NewFeatureError("cannot infer shell cwd through shell control flow; use simple commands")
+        raise _UnsupportedShellSyntaxError("shell control flow")
 
 
 def _require_supported_pipeline(parts: list[_ShellPart]) -> None:
@@ -206,11 +218,11 @@ def _require_supported_pipeline(parts: list[_ShellPart]) -> None:
         if not isinstance(part, list) or part[0] != "cd":
             continue
         if parts[index - 1 : index] == ["|"] or parts[index + 1 : index + 2] == ["|"]:
-            raise NewFeatureError("cannot infer shell cwd for cd as a pipeline stage")
+            raise _UnsupportedShellSyntaxError("cd as a pipeline stage")
     # The lexer can retain escaped line breaks in words, changing command names
     # or arguments. Don't infer a checkout from those words.
     if any("\n" in word for part in parts if isinstance(part, list) for word in part):
-        raise NewFeatureError("cannot infer shell cwd for cd with a pipeline and multiline words")
+        raise _UnsupportedShellSyntaxError("cd with a pipeline and multiline words")
 
 
 def _cd_directories(words: list[str], directories: set[Path]) -> set[Path]:
@@ -222,10 +234,10 @@ def _cd_directories(words: list[str], directories: set[Path]) -> set[Path]:
         or arguments[0].startswith("-")
         or any(character in arguments[0] for character in "$`*?[")
     ):
-        raise NewFeatureError("cannot infer shell cwd for nonliteral cd; use cd -- <literal-path>")
+        raise _UnsupportedShellSyntaxError("nonliteral cd")
     target = Path(arguments[0]).expanduser()
     if os.environ.get("CDPATH") and not target.is_absolute() and not arguments[0].startswith(("./", "../")):
-        raise NewFeatureError("cannot infer shell cwd for relative cd with CDPATH")
+        raise _UnsupportedShellSyntaxError("relative cd with CDPATH")
     # Shell cd uses logical parent paths; resolve() would follow symlinks before removing `..`
     candidates = {Path(os.path.abspath(directory / target)) for directory in directories}  # noqa: PTH100
     return {candidate for candidate in candidates if candidate.is_dir()}
