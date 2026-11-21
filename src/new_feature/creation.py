@@ -78,7 +78,9 @@ def create_feature(root: Path, name: str, options: CreationOptions) -> int:
                 warn_if_config_changed(config, record)
         if agent_command is None:
             if not json_output:
-                sys.stdout.write(build_worktree_ready_message(worktree) + "\n")
+                sys.stdout.write(
+                    build_worktree_ready_message(worktree, record.slug, inert=record.status == "inert") + "\n"
+                )
         else:
             prompt = agent_module.resolve_prompt(
                 agent_module.build_initial_prompt(record.slug),

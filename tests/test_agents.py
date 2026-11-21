@@ -124,7 +124,10 @@ def test_create_without_default_agent_prints_worktree_guidance(
     assert main(["my-feature"]) == 0
 
     assert worktree.is_dir()
-    assert capsys.readouterr().out == (f"Worktree ready: {worktree}\nNext: cd -- '{worktree}'\n")
+    assert capsys.readouterr().out.splitlines()[:2] == [
+        f"Worktree ready: {worktree}",
+        f"Next: cd -- '{worktree}'",
+    ]
 
 
 def test_create_with_no_agent_prints_worktree_guidance_despite_default_agent(
@@ -144,7 +147,13 @@ def test_create_with_no_agent_prints_worktree_guidance_despite_default_agent(
     assert main(["my-feature", "--no-agent"]) == 0
 
     assert launches == []
-    assert capsys.readouterr().out == f"Worktree ready: {worktree}\nNext: cd -- {worktree}\n"
+    assert capsys.readouterr().out.splitlines() == [
+        f"Worktree ready: {worktree}",
+        f"Next: cd -- {worktree}",
+        "In an existing agent session, set each tool call's workdir to the path above.",
+        "Run commands with the feature's saved environment: new-feature exec my-feature -- COMMAND ...",
+        "Avoid reusing the target checkout's editable installs; they can load target code.",
+    ]
 
 
 def test_create_relaunches_existing_feature_without_rerunning_setup(
@@ -262,7 +271,9 @@ def test_create_infers_no_agent_only_for_agent_children(
     if launch_expected:
         assert launches[0][0] == (("claude",) if "--agent" in options else ("codex",))
     else:
-        assert capsys.readouterr().out == f"Worktree ready: {worktree}\nNext: cd -- {worktree}\n"
+        output = capsys.readouterr().out
+        assert f"Worktree ready: {worktree}" in output
+        assert "new-feature exec my-feature -- COMMAND" in output
 
 
 def test_agent_session_prompt_requires_explicit_agent(tmp_path, monkeypatch, capsys) -> None:
